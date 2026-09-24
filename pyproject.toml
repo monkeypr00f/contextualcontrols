@@ -1,0 +1,25 @@
+[project]
+name = "contextual-controls"
+version = "0.1.0"
+description = "Local habit-based control suggestions for Home Assistant"
+requires-python = ">=3.14.2"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.14"
+check_untyped_defs = true
+files = ["custom_components/contextual_controls/models.py", "custom_components/contextual_controls/history.py", "custom_components/contextual_controls/scoring.py", "custom_components/contextual_controls/eligibility.py", "custom_components/contextual_controls/tracking.py"]
+
+[[tool.mypy.overrides]]
+module = ["homeassistant.*"]
+ignore_missing_imports = true
