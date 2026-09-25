@@ -154,7 +154,7 @@ def apply_order(ranked: Sequence[Ranked], order: Sequence[str], mode: str) -> li
     return [
         replace(
             item,
-            score=round((1 - ai_weight) * item.score + ai_weight * combined, 4),
+            score=round(combined, 4),
             reason_key="ai_selected" if item.entity_id in ai_positions else item.reason_key,
             source=source,
         )

@@ -88,6 +88,7 @@ def test_hybrid_and_ai_assisted_ranking():
     assert [item.entity_id for item in assisted] == ["switch.three", "script.two", "light.one"]
     assert all(item.source == "hybrid" for item in hybrid)
     assert all(item.source == "ai_assisted" for item in assisted)
+    assert [item.score for item in hybrid] == sorted((item.score for item in hybrid), reverse=True)
 
 
 class FakeProvider:
