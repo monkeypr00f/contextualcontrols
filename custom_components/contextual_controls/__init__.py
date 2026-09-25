@@ -42,14 +42,14 @@ async def async_setup(hass, config):
 
 async def async_setup_entry(hass, entry):
     from homeassistant.const import Platform
-    from homeassistant.exceptions import ConfigEntryNotReady
+    from homeassistant.exceptions import ConfigEntryNotReady, UnsupportedStorageVersionError
 
     from .coordinator import ContextualCoordinator
 
     coordinator = ContextualCoordinator(hass, entry)
     try:
         await coordinator.async_initialize()
-    except (OSError, ValueError) as err:
+    except (OSError, ValueError, UnsupportedStorageVersionError) as err:
         raise ConfigEntryNotReady(
             translation_domain=DOMAIN, translation_key="storage_unavailable"
         ) from err

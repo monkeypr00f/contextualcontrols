@@ -4,7 +4,11 @@ Does not connect to the running HA process or command real devices.
 Run: python -m unittest tests.runtime_check -v
 """
 
+import asyncio
+import json
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +17,7 @@ from homeassistant import config_entries, loader
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from homeassistant.setup import async_setup_component
+from homeassistant.util import dt as dt_util
 
 from custom_components.contextual_controls.const import DOMAIN
 
@@ -49,6 +54,76 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await self.hass.async_stop(force=True)
         await self.hass.async_block_till_done()
         self.tmp.cleanup()
+
+    async def test_store_migration_and_future_version(self):
+        from homeassistant.exceptions import UnsupportedStorageVersionError
+
+        from custom_components.contextual_controls.history import encode
+        from custom_components.contextual_controls.models import Usage
+        from custom_components.contextual_controls.storage import History
+
+        data = encode([Usage(dt_util.utcnow(), "light.test", None, "unknown", "turn_on", 0.2)])
+        del data["records"][0]["confidence"]
+        del data["records"][0]["area_id"]
+        history = History(self.hass, "migration")
+        path = Path(history.store.path)
+
+        def write(version):
+            path.parent.mkdir(exist_ok=True)
+            path.write_text(
+                json.dumps(
+                    {"version": version, "minor_version": 1, "key": history.store.key, "data": data}
+                )
+            )
+
+        await asyncio.to_thread(write, 1)
+        await history.async_load(dt_util.utcnow())
+        self.assertEqual(len(history.records), 1)
+        self.assertEqual(history.records[0].confidence, 0.2)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 2)
+        future = History(self.hass, "future")
+        path = Path(future.store.path)
+        await asyncio.to_thread(write, 999)
+        with self.assertRaises(UnsupportedStorageVersionError):
+            await future.async_load(dt_util.utcnow())
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 999)
+
+    async def test_area_targets_and_nonmanual_calls(self):
+        registry = entity_registry.async_get(self.hass)
+        area = area_registry.async_get(self.hass).async_create("Contextual test area")
+        registered = registry.async_get_or_create("light", "test", "contextual_area")
+        registry.async_update_entity(registered.entity_id, area_id=area.id)
+        self.hass.states.async_set(registered.entity_id, "off")
+        flow = await self.hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        flow = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"name": "Area test"}
+        )
+        result = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"],
+            {"included_domains": ["light"], "included_entities": [], "excluded_entities": []},
+        )
+        entry = result["result"]
+        await self.hass.async_block_till_done()
+        self.assertEqual(entry.state, config_entries.ConfigEntryState.LOADED)
+        for context in (Context(user_id="test_user", parent_id="parent"), Context()):
+            await self.hass.services.async_call(
+                "light", "turn_on", {"area_id": area.id}, context=context, blocking=True
+            )
+        await self.hass.async_block_till_done()
+        self.assertEqual(len(entry.runtime_data.history.records), 0)
+        await self.hass.services.async_call(
+            "light",
+            "turn_on",
+            {"area_id": area.id},
+            context=Context(user_id="test_user"),
+            blocking=True,
+        )
+        await self.hass.async_block_till_done()
+        records = list(entry.runtime_data.history.records)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].entity_id, registered.entity_id)
+        self.assertEqual(records[0].area_id, area.id)
+        self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
 
     async def test_complete_lifecycle(self):
         from custom_components.contextual_controls.config_flow import (
@@ -110,6 +185,29 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(coordinator.history.records), 4)
         # Unload flushes; a fresh coordinator restores the real Store file.
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
+        # A new process proves persistence without reusing HA's Store cache.
+        reader = """
+import asyncio, sys
+from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
+from custom_components.contextual_controls.storage import History
+async def read():
+    hass = HomeAssistant(sys.argv[1])
+    history = History(hass, sys.argv[2])
+    await history.async_load(dt_util.utcnow())
+    print(len(history.records))
+    await hass.async_stop(force=True)
+asyncio.run(read())
+"""
+        completed = await asyncio.to_thread(
+            subprocess.run,
+            [sys.executable, "-c", reader, self.tmp.name, entry.entry_id],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+        self.assertEqual(completed.stdout.strip(), "4")
         self.assertTrue(await self.hass.config_entries.async_setup(entry.entry_id))
         self.assertEqual(len(entry.runtime_data.history.records), 4)
         # Native options flow, automatic reload, pins and exclusion enforcement.

@@ -1,0 +1,45 @@
+name: Validate
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements-dev.txt
+      - run: python -m compileall -q custom_components tests
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest -q
+  homeassistant-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test with supported Home Assistant libraries
+        run: >-
+          docker run --rm -v "$PWD:/work:ro" -w /work
+          --entrypoint python ghcr.io/home-assistant/home-assistant:2026.9.3
+          -m unittest tests.runtime_check -v
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: false
+          # Custom repositories work before default-store/brands submission.
+          ignore: brands

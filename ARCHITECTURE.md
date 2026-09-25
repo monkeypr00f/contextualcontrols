@@ -156,9 +156,16 @@ fallback are Phase 3 acceptance tests, not fabricated Phase 1 tests.
 
 ## Verification policy
 
-Pure pytest tests exercise real scoring and policy. HA integration tests use
-the real current core with pytest-homeassistant-custom-component: config flow,
-options reload, service tracking, sensor state, persistence and reset. CI runs
-ruff, mypy on the pure core, pytest, syntax compilation, hassfest and HACS.
-Headless core tests do not prove visual browser layout or actual HACS download;
-those are reported separately in the delivery checklist.
+Pure pytest tests exercise real scoring and policy. Following the user's
+request to use their existing HA installation, no second HA runtime was
+installed locally. `tests/runtime_check.py` uses `IsolatedAsyncioTestCase`, also
+runnable by pytest, and the real 2026.9.3 libraries already in their container.
+It exercises config flow, options reload, service tracking, sensor state,
+Store persistence (including reading from a fresh Python process), and reset.
+Its temporary configuration and dummy services do not connect to the live HA
+process. No mock replacement of the HA APIs is used.
+
+CI runs ruff, mypy on the pure core, pytest, syntax compilation, a matching HA
+container lifecycle test, hassfest and HACS. The actual instance was separately
+used to verify UI onboarding, translated selectors, options, pinned output and
+reload. See `docs/VERIFICATION.md` for results and remaining publication work.
