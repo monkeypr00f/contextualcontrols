@@ -10,9 +10,11 @@ Creato e verificato `sensor.contextual_controls` dalla UI italiana.
 **Pubblicazione e verifica download HACS ancora pendenti.** Il proprietario
 indicato dall’utente è `@monkeypr00f` e la repository è
 `https://github.com/monkeypr00f/contextualcontrols`. Manifest e documentazione
-sono aggiornati, senza segnaposto. Il controllo anonimo dell’API GitHub ha
-restituito HTTP 404; questo non distingue una repository privata da una assente.
-`git ls-remote` non ha trovato credenziali HTTPS locali disponibili.
+sono aggiornati, senza segnaposto. Dopo il nuovo controllo richiesto dall’utente,
+l’API GitHub conferma che la repository è pubblica e `git ls-remote` conferma
+che non contiene ancora branch. Il tentativo di `git push -u origin main`
+si è fermato prima della pubblicazione perché Git non dispone di credenziali
+HTTPS locali. Nessun contenuto remoto è stato sovrascritto.
 
 La struttura locale passa hassfest, ma non viene presentata come repository
 scaricata da HACS. La CI è configurata ma non ancora eseguita su GitHub.

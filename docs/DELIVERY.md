@@ -7,9 +7,9 @@ utilizzi autentici. Nessun dispositivo è stato azionato durante la verifica.
 Il proprietario e la repository sono ora definiti:
 [`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
 Manifest, codeowner e istruzioni sono aggiornati. Il criterio HACS resta
-**pendente** finché la repository non è pubblicamente accessibile e il download
-non è verificato: il controllo GitHub anonimo ha restituito HTTP 404 e non sono
-disponibili credenziali Git locali per il push.
+**pendente** fino alla pubblicazione del codice e alla verifica del download.
+La repository è ora pubblica e raggiungibile, ma vuota. Il push è bloccato
+dall’assenza di credenziali GitHub configurate sul Mac.
 Non sono state implementate le fasi 2–4.
 
 ## Materiale
