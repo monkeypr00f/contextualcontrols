@@ -18,7 +18,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.14"
 check_untyped_defs = true
-files = ["custom_components/contextual_controls/models.py", "custom_components/contextual_controls/history.py", "custom_components/contextual_controls/scoring.py", "custom_components/contextual_controls/eligibility.py", "custom_components/contextual_controls/tracking.py"]
+files = ["custom_components/contextual_controls/models.py", "custom_components/contextual_controls/history.py", "custom_components/contextual_controls/scoring.py", "custom_components/contextual_controls/eligibility.py", "custom_components/contextual_controls/tracking.py", "custom_components/contextual_controls/context.py"]
 
 [[tool.mypy.overrides]]
 module = ["homeassistant.*"]

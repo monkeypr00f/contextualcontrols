@@ -8,11 +8,13 @@ import pytest
 
 from custom_components.contextual_controls.models import Candidate, ScoringSettings, Usage
 from custom_components.contextual_controls.scoring import (
+    area_weight,
     clock_distance,
     rank,
     recency_decay,
     state_weight,
     time_similarity,
+    weekday_weight,
 )
 
 NOW = datetime(2026, 9, 24, 23, 30, tzinfo=ZoneInfo("Europe/Rome"))
@@ -24,9 +26,12 @@ def use(entity="light.bed", days=1, hour=23, user="alice", **kwargs):
         (NOW - timedelta(days=days)).replace(hour=hour),
         entity,
         user,
-        kwargs.get("source", "user"),
+        kwargs.get("source", "manual"),
         kwargs.get("action", "turn_off"),
         kwargs.get("confidence", 0.9),
+        kwargs.get("area_id"),
+        kwargs.get("presence_home"),
+        kwargs.get("context_states", ()),
     )
 
 
@@ -78,11 +83,57 @@ def test_profile_filter_does_not_mix_users_or_unknown():
     assert rank([Candidate("light.bed", "on")], [use(user="bob")], NOW, settings)
 
 
-def test_unknown_and_child_sources_opt_in():
+def test_unknown_sources_opt_in():
     candidate = [Candidate("light.bed", "on")]
     records = [use(source="unknown", confidence=0.2) for _ in range(10)]
     assert not rank(candidate, records, NOW, SETTINGS)
     assert rank(candidate, records, NOW, replace(SETTINGS, learn_sources=("unknown",)))
+
+
+def test_weekday_weekend_and_exact_weights():
+    saturday = datetime(2026, 9, 26, 9, tzinfo=NOW.tzinfo)
+    sunday = saturday + timedelta(days=1)
+    monday = saturday + timedelta(days=2)
+    assert weekday_weight(saturday, sunday, True, "workweek") > weekday_weight(
+        saturday, monday, True, "workweek"
+    )
+    assert weekday_weight(saturday, sunday, True, "exact") < 1
+    assert weekday_weight(saturday, monday, False, "exact") == 1
+
+
+def test_presence_context_and_area_change_score_components():
+    candidate = [Candidate("light.bed", "on", "bedroom")]
+    matching = [
+        use(
+            days=n,
+            presence_home=True,
+            area_id="bedroom",
+            context_states=(("input_boolean.sleep", "on"),),
+        )
+        for n in range(1, 5)
+    ]
+    settings = replace(
+        SETTINGS,
+        presence_home=True,
+        presence_mode="signal",
+        active_area_ids=("bedroom",),
+        context_states=(("input_boolean.sleep", "on"),),
+    )
+    matched = rank(candidate, matching, NOW, settings)[0]
+    mismatched = rank(
+        candidate,
+        matching,
+        NOW,
+        replace(
+            settings,
+            presence_home=False,
+            active_area_ids=("kitchen",),
+            context_states=(("input_boolean.sleep", "off"),),
+        ),
+    )[0]
+    assert matched.score > mismatched.score
+    assert matched.presence > 1 and matched.context > 1 and matched.area > 1
+    assert area_weight(None, ("bedroom",)) == 1
 
 
 def test_ignore_does_not_delete_history():

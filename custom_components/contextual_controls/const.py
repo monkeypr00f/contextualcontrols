@@ -1,9 +1,9 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 NAME = "Contextual Controls"
-STORAGE_VERSION = 2
+STORAGE_VERSION = 3
 MAX_RECORDS = 50_000
 RETENTION_DAYS = 90
 DEFAULT_DOMAINS = ["light", "switch", "cover", "climate", "media_player", "scene", "script"]
@@ -28,8 +28,13 @@ DEFAULTS = {
     "learning_period_days": 21,
     "time_window_minutes": 90,
     "recency_weight": 70,
-    "learn_sources": ["user"],
+    "learn_sources": ["manual", "assist"],
     "user_id": "",
+    "consider_weekday": True,
+    "weekday_mode": "workweek",
+    "presence_entities": [],
+    "presence_mode": "signal",
+    "context_entities": [],
     "ignored_entities": [],
     "pinned_entities": [],
     "pinned_position": "before",
@@ -39,3 +44,6 @@ DEFAULTS = {
     "cold_start": "recent",
     "debug": False,
 }
+
+PRESENCE_DOMAINS = ["person", "device_tracker", "binary_sensor"]
+LEARNING_SOURCES = ["manual", "assist", "automation", "script", "unknown"]

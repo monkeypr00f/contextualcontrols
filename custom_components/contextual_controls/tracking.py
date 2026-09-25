@@ -1,5 +1,7 @@
 """Conservative origin classification and supported control actions."""
 
+from __future__ import annotations
+
 from collections import OrderedDict
 
 ON_OFF = {"turn_on", "turn_off", "toggle"}
@@ -54,13 +56,49 @@ ACTIONS = {
 }
 
 
-def classify(user_id: str | None, parent_id: str | None) -> tuple[str, float]:
-    """Do not label child contexts as UI or guess Assist/automation ancestry."""
-    if parent_id:
-        return "child", 0.3
-    if user_id:
-        return "user", 0.9
-    return "unknown", 0.2
+SOURCE_CONFIDENCE = {
+    "manual": 0.95,
+    "assist": 0.85,
+    "script": 0.65,
+    "automation": 0.55,
+    "unknown": 0.2,
+}
+
+
+def classify(
+    context_id: str,
+    user_id: str | None,
+    parent_id: str | None,
+    origins: OriginTracker | None = None,
+) -> tuple[str, float]:
+    """Prefer observed ancestry; only root authenticated calls are manual."""
+    if origins and (source := origins.resolve(context_id, parent_id)):
+        return source, SOURCE_CONFIDENCE[source]
+    if user_id and not parent_id:
+        return "manual", SOURCE_CONFIDENCE["manual"]
+    return "unknown", 0.25 if parent_id else SOURCE_CONFIDENCE["unknown"]
+
+
+class OriginTracker:
+    """Bounded in-memory index of public HA execution-context events."""
+
+    def __init__(self) -> None:
+        self._origins: OrderedDict[str, tuple[str, float]] = OrderedDict()
+
+    def observe(self, context_id: str, source: str, now: float) -> None:
+        while self._origins and (
+            now - next(iter(self._origins.values()))[1] > 300 or len(self._origins) >= 4096
+        ):
+            self._origins.popitem(last=False)
+        self._origins[context_id] = (source, now)
+
+    def resolve(self, context_id: str, parent_id: str | None) -> str | None:
+        current = self._origins.get(context_id)
+        if current:
+            return current[0]
+        if parent_id and (parent := self._origins.get(parent_id)):
+            return parent[0]
+        return None
 
 
 def supports_action(entity_id: str, domain: str, action: str) -> bool:
