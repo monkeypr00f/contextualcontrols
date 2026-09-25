@@ -1,15 +1,15 @@
 {
   "domain": "contextual_controls",
   "name": "Contextual Controls",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@monkeypr00f"
   ],
   "config_flow": true,
   "documentation": "https://github.com/monkeypr00f/contextualcontrols",
-  "after_dependencies": [
-    "frontend",
-    "http"
-  ],
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/monkeypr00f/contextualcontrols/issues",
