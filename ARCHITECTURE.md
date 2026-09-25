@@ -1,8 +1,9 @@
-# Contextual Controls — Phase 1–2 architecture
+# Contextual Controls — Phase 1–2 and UI preview architecture
 
 Decision record, updated 2026-09-25. Phase 2 adds local presence, context,
-weekday, area and origin signals. AI and the custom Lovelace card remain outside
-this release.
+weekday, area and origin signals. Version 0.3.0 adds an early Lovelace card so
+the ranked result can be evaluated before the complete Phase 4. AI remains
+outside this release.
 
 ## Verified baseline
 
@@ -149,7 +150,7 @@ the explicit boolean is enforced server-side. Ignoring learning is an options
 list, separate from hiding controls; it also suppresses old evidence without
 deleting other history. A later removal from this list can reuse retained data.
 
-## UI, distribution and future phases
+## UI preview, distribution and future phases
 
 Initial setup: instance name then monitored entities (recommended domains are
 preselected). Only Statistical mode exists in this release; inert AI choices
@@ -158,13 +159,26 @@ Learning, Context, Dashboard, Advanced and Reset. The Context section uses
 native entity selectors and validates require-home configuration. AI arrives
 with its implementation. Credentials, when added, belong to ConfigEntry.data.
 
-One integration directory is delivered by HACS. The Phase 4 card should be a
-separate HACS dashboard repository: integration and frontend have different
-distribution categories. It can share a source workspace later, but the
-integration must not assume HACS installs root-level frontend files.
-This repository can be tested locally before publication; a real public GitHub
-URL, metadata and HACS validation are required before calling it published or
-HACS-verified. Default-store inclusion and brands submission are separate work.
+Version 0.3.0 bundles a dependency-free preview card inside the integration.
+The integration registers its immutable static route through
+`async_register_static_paths` and its module through `add_extra_js_url`, both
+present in the supported Core 2026.9.3 frontend/HTTP API. This makes the card
+discoverable in the visual picker without editing dashboard resources or YAML.
+The module URL includes the integration version to avoid stale browser caches.
+
+The card reads only the ranked sensor and the states of the returned entities.
+It renders at most 12 tiles and does not inspect the complete state registry.
+An action occurs only after a user tap. Automatic tap toggles simple domains,
+activates scene/script/button with their domain service, and opens more-info for
+climate, cover, media player, lock and other controls without a safe one-tap
+meaning. Hold always opens more-info. Text from entity states is assigned with
+`textContent`, not injected as HTML.
+
+HACS still recommends a separate Dashboard repository for the definitive Phase
+4 distribution because Integration and Dashboard are different categories. The
+bundled card is deliberately an evaluation slice. Once its interaction and
+layout are accepted, the same custom element can move to a plugin repository;
+the sensor contract and saved dashboard card configuration stay unchanged.
 
 The current LLM API exposes tools **to** models; it is not a generic safe
 completion/reranking API. Conversation can execute intents, and prompt wording
