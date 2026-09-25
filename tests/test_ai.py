@@ -6,6 +6,8 @@ import pytest
 from custom_components.contextual_controls.ai import (
     AIManager,
     AIProviderError,
+    OllamaProvider,
+    OpenAICompatibleProvider,
     PrivacySettings,
     apply_order,
     build_prompt,
@@ -138,3 +140,57 @@ def test_ai_fallback_keeps_statistical_order():
     assert not outcome.used
     assert outcome.error == "timeout"
     assert outcome.ranked == items()
+
+
+class FakeResponse:
+    def __init__(self, body, status=200):
+        self.body = body
+        self.status = status
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def json(self, content_type=None):
+        return self.body
+
+
+class FakeSession:
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def post(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self.response
+
+
+def test_ollama_provider_contract():
+    session = FakeSession(FakeResponse({"message": {"content": '["light.one"]'}}))
+    provider = OllamaProvider(session, "http://ollama:11434/", "local-model", 5, 0.1)
+    result = asyncio.run(provider.async_order("prompt", {"light.one": "light.one"}))
+    url, request = session.calls[0]
+    assert result == ["light.one"]
+    assert url == "http://ollama:11434/api/chat"
+    assert request["json"]["stream"] is False
+    assert request["json"]["model"] == "local-model"
+
+
+def test_openai_compatible_provider_contract():
+    session = FakeSession(FakeResponse({"choices": [{"message": {"content": '["candidate_1"]'}}]}))
+    provider = OpenAICompatibleProvider(session, "http://local-model/v1", "model", 5, 0.1, "secret")
+    result = asyncio.run(provider.async_order("prompt", {"candidate_1": "light.private"}))
+    url, request = session.calls[0]
+    assert result == ["light.private"]
+    assert url == "http://local-model/v1/chat/completions"
+    assert request["headers"]["Authorization"] == "Bearer secret"
+    assert "secret" not in str(request["json"])
+
+
+def test_http_error_is_sanitized():
+    session = FakeSession(FakeResponse({}, status=503))
+    provider = OllamaProvider(session, "http://private-host", "model", 5, 0.1)
+    with pytest.raises(AIProviderError, match="http_503"):
+        asyncio.run(provider.async_order("prompt", {"light.one": "light.one"}))
