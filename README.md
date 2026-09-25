@@ -5,18 +5,17 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Phase 2, versione 0.2.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Phase 2 + anteprima UI, versione 0.3.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento e ranking sono completamente locali. Nessun account AI, nessuna
 API key, nessun servizio esterno. Presenza, giorno della settimana, area e
 contesto casa contribuiscono al ranking senza eseguire comandi.
 
-La distribuzione HACS è di tipo **Integration**. La futura card avrà una
-repository HACS Dashboard separata. In questa versione il risultato è un sensore;
-non viene aggiunta automaticamente una sezione dinamica alla dashboard.
+La distribuzione HACS è di tipo **Integration**. La versione 0.3.0 include una
+prima card Lovelace per rendere utilizzabile il risultato del sensore. La card
+definitiva avrà una repository HACS Dashboard separata, come raccomandato da HACS.
 
-> Screenshot placeholder: qui verrà mostrata la card nella Phase 4. Le schermate
-> di configurazione e le verifiche sono descritte in `docs/VERIFICATION.md` e
-> `docs/PHASE2.md`.
+> Questa è una fetta anticipata della Phase 4 per validare layout e interazioni.
+> AI e provider esterni non fanno parte di questa versione.
 
 ## Installazione manuale
 
@@ -138,11 +137,34 @@ di default e limita i dettagli a 30 candidati. L’attributo `entities` contiene
 entity ID, quindi va trattato come informazione della propria casa.
 
 Lock richiede inclusione esplicita. Alarm e siren sono esclusi. L’integrazione
-non esegue alcuna azione sui dispositivi: la futura card userà more-info per i
-controlli sensibili. La selezione delle entità in questa integrazione non crea
+non esegue alcuna azione sui dispositivi. La card apre more-info per i controlli
+sensibili e chiama servizi soltanto dopo un tocco dell’utente. La selezione delle entità non crea
 un nuovo sistema di permessi: valgono i permessi nativi Home Assistant.
 
-## Risultato e Lovelace nella Phase 2
+## Card Lovelace di anteprima
+
+Dopo installazione o aggiornamento e riavvio:
+
+1. modifica una dashboard;
+2. scegli **Aggiungi card**;
+3. cerca **Contextual Controls**;
+4. scegli il sensore proposto e salva.
+
+Non occorre aggiungere risorse Lovelace né modificare YAML. La card mostra una
+griglia responsive di tile con icona, nome e stato. Dal suo editor visuale puoi
+configurare titolo, limite, colonne desktop/mobile, motivo, punteggio, ultimo
+aggiornamento, controlli fissi e azione al tocco. Il titolo dinamico usa
+Buongiorno, Per te adesso, Questa sera e Prima di dormire.
+
+Con azione automatica, light/switch/fan/input_boolean vengono alternati; scene,
+script e button usano l’azione appropriata. Climate, media player, cover, lock,
+vacuum, select e number aprono more-info. La pressione prolungata apre sempre
+more-info. La card non esegue mai azioni senza un’interazione dell’utente.
+
+Se non ci sono suggerimenti può nascondersi oppure mostrare “Nessun suggerimento
+per ora”. I layout Compact e Chips restano parte della Phase 4 completa.
+
+## Contratto del sensore
 
 Apri il sensore oppure Strumenti per sviluppatori → Stati. Lo stato è il numero
 di controlli, inclusi i fissi. Attributi: `entities`, `last_update`, `mode`,
@@ -172,10 +194,8 @@ presence_mode: signal
 presence_home: true
 ```
 
-Per visualizzare il sensore senza YAML: modifica la dashboard, aggiungi una card
-Entità e scegli il sensore creato. Questo mostra il conteggio e permette di
-aprire i dettagli; non genera tile dinamiche. `contextual-controls-card`, editor
-visuale, layout responsive e titolo dinamico sono esclusivamente Phase 4.
+La card usa questo attributo come contratto pubblico e non analizza tutte le
+entità dell’istanza.
 
 ## Reset e ignora utilizzo
 

@@ -22,6 +22,9 @@ contextual-controls/
 │       ├── coordinator.py
 │       ├── diagnostics.py
 │       ├── eligibility.py
+│       ├── frontend.py
+│       ├── frontend
+│       │   └── contextual-controls-card.js
 │       ├── history.py
 │       ├── manifest.json
 │       ├── models.py
@@ -38,6 +41,7 @@ contextual-controls/
 │   ├── DELIVERY.md
 │   ├── FILES.md
 │   ├── PHASE2.md
+│   ├── UI_PREVIEW.md
 │   └── VERIFICATION.md
 ├── hacs.json
 ├── pyproject.toml

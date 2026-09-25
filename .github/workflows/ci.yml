@@ -15,6 +15,7 @@ jobs:
           python-version: '3.14'
       - run: pip install -r requirements-dev.txt
       - run: python -m compileall -q custom_components tests
+      - run: node --check custom_components/contextual_controls/frontend/contextual-controls-card.js
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy
