@@ -5,17 +5,18 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Phase 2 + anteprima UI, versione 0.3.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
-Apprendimento e ranking sono completamente locali. Nessun account AI, nessuna
-API key, nessun servizio esterno. Presenza, giorno della settimana, area e
-contesto casa contribuiscono al ranking senza eseguire comandi.
+Phase 3 + anteprima UI, versione 0.4.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
+può soltanto riordinare una shortlist già ammessa dal motore statistico.
+Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
+senza eseguire comandi.
 
-La distribuzione HACS è di tipo **Integration**. La versione 0.3.0 include una
+La distribuzione HACS è di tipo **Integration**. La versione 0.4.0 include una
 prima card Lovelace per rendere utilizzabile il risultato del sensore. La card
 definitiva avrà una repository HACS Dashboard separata, come raccomandato da HACS.
 
 > Questa è una fetta anticipata della Phase 4 per validare layout e interazioni.
-> AI e provider esterni non fanno parte di questa versione.
+> La versione 0.4.0 non è ancora stata installata nell’istanza Home Assistant reale.
 
 ## Installazione manuale
 
@@ -57,12 +58,13 @@ In **Configura** trovi sezioni separate:
 
 | Sezione | Opzioni |
 | --- | --- |
-| Generale | Numero suggerimenti 1–12; refresh periodico e su eventi |
+| Generale | Modalità, numero suggerimenti 1–12; refresh periodico e su eventi |
 | Entità | Inclusioni/esclusioni, domini, aree |
 | Apprendimento | 7–90 giorni, fascia ±30–180 minuti, recenza, origine, profilo, entità ignorate |
 | Contesto | Presenza, modalità presenza, entità contestuali |
 | Dashboard | Controlli fissi ordinabili, prima/dopo, occupazione degli slot |
 | Avanzate / Debug | Soglia minima, cold start, dettagli dei punteggi |
+| AI opzionale | Provider, shortlist, cache, timeout, temperatura e privacy |
 | Reset | Cancellazione confermata per istanza, entità o utente |
 
 Le modifiche ricaricano l’istanza automaticamente e mantengono l’apprendimento.
@@ -71,13 +73,27 @@ server HA, perché un sensore condiviso non può avere attributi diversi per bro
 
 ## Modalità Statistical / Hybrid / AI
 
-**Statistical** è l’unica modalità implementata nella Phase 2. Non vengono
-mostrati provider o opzioni AI non funzionanti. Hybrid e AI-assisted arriveranno
-con la Phase 3, dopo la validazione delle fasi precedenti.
+**Statistical only** usa esclusivamente il ranking locale. **Smart / Hybrid**
+combina l’ordine statistico con quello del provider. **AI assisted** dà più peso
+all’ordine del modello, mantenendo gli stessi filtri, la soglia locale e la
+shortlist. Con provider disabilitato o non raggiungibile entrambe tornano
+automaticamente al ranking statistico.
 
-Conversation può eseguire intenti: non viene chiamata per classificare controlli.
-La futura AI riceverà solo candidati locali autorizzati e potrà riordinarli,
-con fallback statistico. Non avrà strumenti per eseguire servizi.
+I provider implementati sono **Ollama** (`/api/chat`) e **OpenAI-compatible**
+(`/v1/chat/completions`). Nessun SDK esterno è richiesto. URL, modello, timeout
+e temperatura sono configurabili dalla UI; l’API key è conservata in
+`ConfigEntry.data` e non compare in log o diagnostics.
+
+Conversation non viene usata perché la sua API pubblica può eseguire intenti e
+non garantisce un percorso provider-indipendente senza strumenti. L’API LLM di
+Home Assistant espone strumenti ai modelli, ma non offre una completion generica
+sicura per questo reranking. La decisione è descritta in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+Il modello riceve al massimo 6–30 candidati statistici. La risposta ammessa è
+solo una lista JSON ordinata. ID estranei, duplicati e valori non validi vengono
+scartati; un output inutilizzabile attiva il fallback. L’AI non riceve strumenti,
+non può aggiungere candidati e non può chiamare servizi Home Assistant.
 
 ## Come impara
 
@@ -125,7 +141,7 @@ valori opachi, senza inferenze semantiche.
 
 ## Privacy e sicurezza
 
-Tutti i dati restano nell’istanza. Store salva in
+Senza provider AI tutti i dati restano nell’istanza. Store salva in
 `/config/.storage/contextual_controls.<entry_id>` con gestione privata dei file.
 Backup HA può includere questo file. Eliminare l’integrazione elimina il relativo
 storico; un riavvio o reload invece lo conserva. Un arresto improvviso può perdere
@@ -135,6 +151,13 @@ Il sensore non espone user ID né timestamp dei singoli utilizzi. Diagnostics
 contiene solo conteggi e impostazioni non sensibili. Il debug è disabilitato
 di default e limita i dettagli a 30 candidati. L’attributo `entities` contiene
 entity ID, quindi va trattato come informazione della propria casa.
+
+Per l’AI ogni categoria è autorizzabile separatamente: entity ID, friendly name,
+stato, area, statistiche aggregate, orario esatto, presenza ed entità
+contestuali. Gli entity ID disattivati vengono sostituiti da token come
+`candidate_1`. Non vengono mai inviati storico grezzo, user ID o l’intero state
+registry. Il default non invia minuti/secondi né presenza. Contesto invariato
+usa la cache; il minimo intervallo configurabile evita chiamate continue.
 
 Lock richiede inclusione esplicita. Alarm e siren sono esclusi. L’integrazione
 non esegue alcuna azione sui dispositivi. La card apre more-info per i controlli
@@ -168,7 +191,9 @@ per ora”. I layout Compact e Chips restano parte della Phase 4 completa.
 
 Apri il sensore oppure Strumenti per sviluppatori → Stati. Lo stato è il numero
 di controlli, inclusi i fissi. Attributi: `entities`, `last_update`, `mode`,
-`ai_used`, `learning_period_days`, `candidate_count` e conteggi dello storico.
+`ai_used`, `ai_cached`, `ai_provider`, `ai_status`, `last_ai_update`,
+`learning_period_days`, `candidate_count` e conteggi dello storico. In caso di
+problema compare anche `ai_error`, senza rendere indisponibile il sensore.
 
 Esempio **illustrativo** (i risultati reali dipendono dai tuoi utilizzi):
 
@@ -188,8 +213,11 @@ entities:
     rank: 2
     pinned: false
     usage_count_in_window: 8
-mode: statistical
-ai_used: false
+mode: hybrid
+ai_used: true
+ai_cached: false
+ai_provider: ollama
+ai_status: used
 presence_mode: signal
 presence_home: true
 ```
@@ -229,9 +257,13 @@ un controllo usa invece Entità escluse.
 - **Storico dopo restart:** Store viene riletto. Non rimuovere e ricreare l’istanza
   per aggiornare, perché la rimozione elimina i suoi dati.
 - **Posso usare più istanze?** Sì, hanno Store e sensori indipendenti.
-- **Funziona senza internet?** Sì, integralmente nelle Phase 1–2.
-- **Perché non uso già AI?** Prima si verifica l’apprendimento locale; non è
-  necessario un modello esterno per produrre suggerimenti.
+- **Funziona senza internet?** Sì. Disabilita l’AI oppure usa Ollama in rete locale.
+- **AI non raggiungibile:** il sensore continua con il ranking statistico e
+  mostra un codice breve in `ai_error`, ad esempio `timeout`.
+- **Il provider restituisce entità inventate:** vengono ignorate e non possono
+  superare la shortlist locale.
+- **Perché non compare Conversation agent?** L’API pubblica può eseguire intenti;
+  non offre ancora una garanzia generica “nessuno strumento” adatta a questo uso.
 
 ## Sviluppo e verifiche
 
@@ -253,9 +285,9 @@ python -m unittest tests.runtime_check -v
 ```
 
 CI include syntax, lint, tipi del motore, pytest, test runtime HA, hassfest e HACS.
-Ultima verifica locale: 56 test passati. La CI esegue inoltre 3 test completi
-con Home Assistant 2026.9.3, hassfest e HACS. I test AI e frontend appartengono
-alle fasi future. Risultati
+Ultima verifica locale: 69 test passati. La CI esegue inoltre 3 test completi
+con Home Assistant 2026.9.3, hassfest e HACS. I test coprono anche privacy,
+parsing, provider, cache, ranking e fallback AI. Risultati
 e limiti della verifica effettiva sono in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 Licenza MIT. Le decisioni e le fonti ufficiali sono in
