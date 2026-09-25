@@ -4,6 +4,8 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from homeassistant.components.automation import EVENT_AUTOMATION_TRIGGERED
+from homeassistant.components.script.const import EVENT_SCRIPT_STARTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EVENT_CALL_SERVICE,
@@ -22,11 +24,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import DEFAULTS, DOMAIN
+from .context import is_home, presence_status, snapshot_context
 from .eligibility import compose, eligible
 from .models import Candidate, ScoringSettings, Usage
 from .scoring import rank
 from .storage import History
-from .tracking import ACTIONS, Deduplicator, classify, supports_action
+from .tracking import ACTIONS, Deduplicator, OriginTracker, classify, supports_action
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,11 +49,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.history = History(hass, entry.entry_id)
         self.eligible_ids: set[str] = set()
         self.areas: dict[str, str | None] = {}
+        self.signal_areas: dict[str, str | None] = {}
         self._dirty = True
         self._unsubscribers: list = []
         self._pending_refresh = None
         self._closed = False
         self._dedup = Deduplicator()
+        self._origins = OriginTracker()
         self._translations: dict[str, str] = {}
 
     async def async_initialize(self) -> None:
@@ -63,6 +68,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (EVENT_CALL_SERVICE, self._service),
             (EVENT_STATE_CHANGED, self._state),
             (EVENT_HOMEASSISTANT_STARTED, self._topology),
+            (EVENT_AUTOMATION_TRIGGERED, self._automation),
+            (EVENT_SCRIPT_STARTED, self._script_started),
             (er.EVENT_ENTITY_REGISTRY_UPDATED, self._topology),
             (dr.EVENT_DEVICE_REGISTRY_UPDATED, self._topology),
             (ar.EVENT_AREA_REGISTRY_UPDATED, self._topology),
@@ -75,6 +82,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         devices = dr.async_get(self.hass)
         self.eligible_ids.clear()
         self.areas.clear()
+        self.signal_areas.clear()
+        signal_ids = set(self.options["presence_entities"]) | set(self.options["context_entities"])
         for state in self.hass.states.async_all():
             entry = entities.async_get(state.entity_id)
             area = entry.area_id if entry else None
@@ -84,6 +93,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             candidate = Candidate(
                 state.entity_id, state.state, area, bool(entry and entry.disabled_by)
             )
+            if state.entity_id in signal_ids:
+                self.signal_areas[state.entity_id] = area
             if eligible(candidate, self.options):
                 self.eligible_ids.add(state.entity_id)
                 self.areas[state.entity_id] = area
@@ -113,16 +124,60 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if entity_id.partition(".")[0] in ACTIONS:
                 self._dirty = True
                 self._request()
-        elif entity_id in self.eligible_ids:
+        elif entity_id in self.eligible_ids or entity_id in set(
+            self.options["presence_entities"] + self.options["context_entities"]
+        ):
             self._request()
+
+    @callback
+    def _automation(self, event: Event) -> None:
+        self._origins.observe(event.context.id, "automation", event.time_fired.timestamp())
+
+    @callback
+    def _script_started(self, event: Event) -> None:
+        self._origins.observe(event.context.id, "script", event.time_fired.timestamp())
+
+    @callback
+    def _signal_snapshot(
+        self,
+    ) -> tuple[bool | None, tuple[tuple[str, str], ...], tuple[str, ...]]:
+        presence_ids = tuple(self.options["presence_entities"])
+        context_ids = tuple(self.options["context_entities"])
+        signal_ids = set(presence_ids) | set(context_ids)
+        states = {
+            entity_id: state.state
+            for entity_id in signal_ids
+            if (state := self.hass.states.get(entity_id))
+        }
+        presence = presence_status(states, presence_ids)
+        context = snapshot_context(states, context_ids)
+        active_areas = tuple(
+            sorted(
+                {
+                    area_id
+                    for entity_id in presence_ids
+                    if (area_id := self.signal_areas.get(entity_id))
+                    and is_home(entity_id, states.get(entity_id, "unknown"))
+                }
+            )
+        )
+        return presence, context, active_areas
 
     @callback
     def _service(self, event: Event) -> None:
         domain = event.data.get("domain")
         action = event.data.get("service")
+        if domain == "conversation" and action == "process":
+            self._origins.observe(event.context.id, "assist", event.time_fired.timestamp())
+            return
         if domain not in ACTIONS and domain != "homeassistant":
             return
-        source, confidence = classify(event.context.user_id, event.context.parent_id)
+        source, confidence = classify(
+            event.context.id,
+            event.context.user_id,
+            event.context.parent_id,
+            self._origins,
+        )
         if source not in self.options["learn_sources"]:
             return
         if self.options["user_id"] and self.options["user_id"] != event.context.user_id:
@@ -147,6 +202,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("Ignoring invalid service target")
                 return
         now = dt_util.utcnow()
+        presence, context, _active_areas = self._signal_snapshot()
         for entity_id in targets & self.eligible_ids:
             if entity_id in self.options["ignored_entities"] or not supports_action(
                 entity_id, domain, action
@@ -162,6 +218,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         action,
                         confidence,
                         self.areas.get(entity_id),
+                        presence,
+                        context,
                     )
                 )
                 self._request()
@@ -170,6 +228,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._dirty:
             self._rebuild()
         now = dt_util.now()
+        presence, context, active_areas = self._signal_snapshot()
         self.history.prune(now)
         self.history.schedule_save()
         candidates = {
@@ -189,13 +248,23 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "user_id",
                     "learn_sources",
                     "ignored_entities",
+                    "consider_weekday",
+                    "weekday_mode",
+                    "presence_mode",
                 )
-            }
+            },
+            presence_home=presence,
+            active_area_ids=active_areas,
+            context_states=context,
         )
-        ranked = await self.hass.async_add_executor_job(
-            rank, tuple(candidates.values()), tuple(self.history.records), now, settings
-        )
-        selected = compose(ranked, candidates, self.options)
+        if self.options["presence_mode"] == "require_home" and presence is not True:
+            ranked = []
+            selected = []
+        else:
+            ranked = await self.hass.async_add_executor_job(
+                rank, tuple(candidates.values()), tuple(self.history.records), now, settings
+            )
+            selected = compose(ranked, candidates, self.options)
         rows = []
         for index, item in enumerate(selected, 1):
             key = (
@@ -220,6 +289,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "ai_used": False,
             "learning_period_days": settings.learning_period_days,
             "candidate_count": len(ranked),
+            "presence_mode": self.options["presence_mode"],
+            "presence_home": presence,
+            "context_entities_count": len(context),
+            "active_areas_count": len(active_areas),
             **self.history.counts(),
         }
         if self.options["debug"]:
@@ -230,6 +303,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "recency": item.recency,
                     "confidence": item.confidence,
                     "current_state": item.current_state,
+                    "weekday": item.weekday,
+                    "presence": item.presence,
+                    "area": item.area,
+                    "context": item.context,
                     "final": item.score,
                 }
                 for item in ranked[:30]

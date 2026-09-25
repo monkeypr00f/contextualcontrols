@@ -41,7 +41,17 @@ def test_hacs_structure_and_local_requirements():
 def test_reasons_are_translated():
     translation = load(COMPONENT / "translations/it.json")
     reasons = translation["entity"]["sensor"]["suggestions"]["state_attributes"]["reason"]["state"]
-    assert set(reasons) == {"habit", "pinned", "recent", "frequent", "domain_default"}
+    assert set(reasons) == {
+        "habit",
+        "pinned",
+        "recent",
+        "frequent",
+        "domain_default",
+        "weekday_habit",
+        "presence_habit",
+        "context_habit",
+        "area_habit",
+    }
 
 
 def test_reset_has_translated_confirmation_and_errors():

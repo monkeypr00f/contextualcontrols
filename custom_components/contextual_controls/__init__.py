@@ -3,6 +3,24 @@
 from .const import DOMAIN
 
 
+async def async_migrate_entry(hass, entry):
+    """Migrate Phase 1 source names and populate Phase 2 defaults."""
+    if entry.version > 2:
+        return False
+    if entry.version < 2:
+        from copy import deepcopy
+
+        from .const import DEFAULTS
+
+        options = {**deepcopy(DEFAULTS), **entry.options}
+        source_map = {"user": "manual", "child": "unknown", "unknown": "unknown"}
+        options["learn_sources"] = list(
+            dict.fromkeys(source_map.get(source, source) for source in options["learn_sources"])
+        )
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    return True
+
+
 async def async_setup(hass, config):
     """Register integration actions once, independent of loaded entries."""
     import voluptuous as vol

@@ -31,6 +31,7 @@
           "general": "Generale",
           "entities": "Entità",
           "learning": "Apprendimento",
+          "context": "Contesto",
           "dashboard": "Dashboard",
           "advanced": "Avanzate / Debug",
           "reset": "Reset apprendimento"
@@ -71,15 +72,32 @@
           "recency_weight": "Peso della recenza",
           "learn_sources": "Impara da",
           "user_id": "ID utente specifico (opzionale)",
-          "ignored_entities": "Non imparare da queste entità"
+          "ignored_entities": "Non imparare da queste entità",
+          "consider_weekday": "Considera giorno della settimana",
+          "weekday_mode": "Confronto dei giorni"
         },
         "data_description": {
           "learning_period_days": "Raccoglie dati dall’installazione, senza importare lo storico Recorder. Conserva fino a 90 giorni in locale.",
           "time_window_minutes": "Simmetrica rispetto all’ora locale, anche a mezzanotte. ±90 alle 22:30 considera 21:00–00:00.",
           "recency_weight": "0: nessun decadimento. 100: decadimento rapido. I tentativi di comando recenti pesano di più.",
-          "learn_sources": "I comandi diretti autenticati sono solitamente volontari, ma UI e API con token non sono distinguibili. Contesti derivati e comandi sconosciuti sono meno affidabili. Assist ha attribuzione limitata in Phase 1.",
+          "learn_sources": "I comandi diretti autenticati sono manuali. Assist, automazioni e script sono riconosciuti solo quando gli eventi Context di Home Assistant ne provano l’origine; gli altri restano sconosciuti.",
           "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
-          "ignored_entities": "Ferma il nuovo apprendimento e ignora le evidenze esistenti senza cancellare lo storico. I controlli fissi restano visibili."
+          "ignored_entities": "Ferma il nuovo apprendimento e ignora le evidenze esistenti senza cancellare lo storico. I controlli fissi restano visibili.",
+          "consider_weekday": "Se attivo, aumenta il peso dello stesso giorno o dello stesso gruppo feriale/weekend.",
+          "weekday_mode": "Giorno esatto confronta lunedì con lunedì. Feriale/weekend raggruppa lunedì–venerdì e sabato–domenica."
+        }
+      },
+      "context": {
+        "title": "Contesto",
+        "data": {
+          "presence_entities": "Entità di presenza",
+          "presence_mode": "Uso della presenza",
+          "context_entities": "Entità contestuali"
+        },
+        "data_description": {
+          "presence_entities": "Scegli entità person, device_tracker o binary_sensor. Un sensore binario indica presenza quando è acceso.",
+          "presence_mode": "Come segnale modifica il ranking. Richiedi presenza nasconde tutti i suggerimenti, inclusi i fissi, finché nessuna entità configurata è a casa.",
+          "context_entities": "Usate solo come segnali locali e mai mostrate come controlli. Stati unknown e unavailable vengono ignorati."
         }
       },
       "dashboard": {
@@ -124,7 +142,8 @@
     "error": {
       "unknown_user": "ID utente non trovato.",
       "confirmation_required": "Conferma il reset prima di continuare.",
-      "entry_not_loaded": "Questa istanza deve essere caricata."
+      "entry_not_loaded": "Questa istanza deve essere caricata.",
+      "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa."
     }
   },
   "entity": {
@@ -139,7 +158,11 @@
               "habit": "Usato frequentemente in questa fascia oraria",
               "recent": "Controllo usato di recente",
               "frequent": "Controllo usato frequentemente",
-              "domain_default": "Selezionato dai default di dominio configurati"
+              "domain_default": "Selezionato dai default di dominio configurati",
+              "weekday_habit": "Abitudine di questo tipo di giornata",
+              "presence_habit": "Usato spesso con la presenza attuale",
+              "context_habit": "Usato spesso nel contesto attuale della casa",
+              "area_habit": "Rilevante per l’area attualmente occupata"
             }
           }
         }
@@ -215,9 +238,25 @@
     },
     "learn_sources": {
       "options": {
-        "user": "Comandi diretti autenticati",
-        "child": "Contesti derivati (script/automazioni, incerti)",
+        "manual": "Comandi manuali autenticati",
+        "assist": "Comandi Assist",
+        "automation": "Azioni delle automazioni",
+        "script": "Azioni interne agli script",
         "unknown": "Chiamate servizio non attribuibili"
+      }
+    },
+    "weekday_mode": {
+      "options": {
+        "exact": "Stesso giorno esatto",
+        "workweek": "Feriale / weekend",
+        "none": "Nessuna distinzione"
+      }
+    },
+    "presence_mode": {
+      "options": {
+        "ignore": "Ignora presenza",
+        "signal": "Usa come segnale",
+        "require_home": "Mostra solo con presenza"
       }
     },
     "pinned_position": {

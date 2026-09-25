@@ -31,6 +31,7 @@
           "general": "General",
           "entities": "Entities",
           "learning": "Learning",
+          "context": "Context",
           "dashboard": "Dashboard",
           "advanced": "Advanced / Debug",
           "reset": "Reset learning"
@@ -71,15 +72,32 @@
           "recency_weight": "Recency weight",
           "learn_sources": "Learn from",
           "user_id": "Specific user ID (optional)",
-          "ignored_entities": "Do not learn these entities"
+          "ignored_entities": "Do not learn these entities",
+          "consider_weekday": "Consider day of week",
+          "weekday_mode": "Day comparison"
         },
         "data_description": {
           "learning_period_days": "Collects from installation onward; does not import Recorder history. Up to 90 days are retained locally.",
           "time_window_minutes": "Symmetric around the current local time, including midnight. ±90 at 22:30 covers 21:00–00:00.",
           "recency_weight": "0: no decay. 100: faster decay. Recent command attempts contribute more.",
-          "learn_sources": "Authenticated direct calls are usually voluntary, but UI and token-based APIs are indistinguishable. Child contexts and unknown calls are less reliable. Assist attribution is limited in Phase 1.",
+          "learn_sources": "Direct authenticated commands are manual. Assist, automation and script ancestry is used only when Home Assistant Context events identify it; uncertain calls remain unknown.",
           "user_id": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles.",
-          "ignored_entities": "Stops new learning and hides existing statistical evidence without deleting history. Pins remain visible."
+          "ignored_entities": "Stops new learning and hides existing statistical evidence without deleting history. Pins remain visible.",
+          "consider_weekday": "When enabled, matching weekdays or workday/weekend groups receive more weight.",
+          "weekday_mode": "Exact compares Monday with Monday. Workday/weekend groups Monday–Friday and Saturday–Sunday."
+        }
+      },
+      "context": {
+        "title": "Context",
+        "data": {
+          "presence_entities": "Presence entities",
+          "presence_mode": "Presence behavior",
+          "context_entities": "Context entities"
+        },
+        "data_description": {
+          "presence_entities": "Choose person, device_tracker or binary_sensor entities. Binary sensors are home while on.",
+          "presence_mode": "Signal adjusts ranking. Require home hides every suggestion, including pins, unless at least one configured entity is home.",
+          "context_entities": "Used only as local scoring signals and never shown as controls. Unknown and unavailable states are ignored."
         }
       },
       "dashboard": {
@@ -125,6 +143,7 @@
       "unknown_user": "Unknown user ID.",
       "confirmation_required": "Confirm the reset before continuing.",
       "entry_not_loaded": "This integration instance must be loaded."
+      ,"presence_required": "Choose at least one presence entity for require-home mode."
     }
   },
   "entity": {
@@ -140,6 +159,10 @@
               "recent": "Recently used control",
               "frequent": "Frequently used control",
               "domain_default": "Selected by the configured domain defaults"
+              ,"weekday_habit": "Habit for this day pattern"
+              ,"presence_habit": "Frequently used with the current presence"
+              ,"context_habit": "Frequently used in the current home context"
+              ,"area_habit": "Relevant to the currently occupied area"
             }
           }
         }
@@ -215,9 +238,25 @@
     },
     "learn_sources": {
       "options": {
-        "user": "Authenticated direct commands",
-        "child": "Child contexts (scripts/automations, uncertain)",
+        "manual": "Manual authenticated commands",
+        "assist": "Assist commands",
+        "automation": "Automation actions",
+        "script": "Actions inside scripts",
         "unknown": "Unattributed service calls"
+      }
+    },
+    "weekday_mode": {
+      "options": {
+        "exact": "Same weekday",
+        "workweek": "Workday / weekend",
+        "none": "No distinction"
+      }
+    },
+    "presence_mode": {
+      "options": {
+        "ignore": "Ignore presence",
+        "signal": "Use as a signal",
+        "require_home": "Require someone home"
       }
     },
     "pinned_position": {

@@ -7,7 +7,14 @@ from homeassistant.config_entries import ConfigFlow, OptionsFlowWithReload
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import DEFAULTS, DOMAIN, NAME, SUPPORTED_DOMAINS
+from .const import (
+    DEFAULTS,
+    DOMAIN,
+    LEARNING_SOURCES,
+    NAME,
+    PRESENCE_DOMAINS,
+    SUPPORTED_DOMAINS,
+)
 
 SECTIONS = {
     "general": ("suggestion_count", "refresh_minutes"),
@@ -27,7 +34,10 @@ SECTIONS = {
         "learn_sources",
         "user_id",
         "ignored_entities",
+        "consider_weekday",
+        "weekday_mode",
     ),
+    "context": ("presence_entities", "presence_mode", "context_entities"),
     "dashboard": ("pinned_entities", "pinned_position", "pinned_use_slots"),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
 }
@@ -36,30 +46,43 @@ CHOICES = {
     "excluded_domains": SUPPORTED_DOMAINS,
     "learning_period_days": ["7", "14", "21", "30", "60", "90"],
     "time_window_minutes": ["30", "60", "90", "120", "180"],
-    "learn_sources": ["user", "child", "unknown"],
+    "learn_sources": LEARNING_SOURCES,
+    "weekday_mode": ["exact", "workweek", "none"],
+    "presence_mode": ["ignore", "signal", "require_home"],
     "refresh_minutes": ["0", "5", "10", "15", "30", "60"],
     "pinned_position": ["before", "after"],
     "cold_start": ["pinned", "recent", "frequent", "domains"],
 }
 NUMERIC_CHOICES = {"learning_period_days", "time_window_minutes", "refresh_minutes"}
 MULTIPLE_CHOICES = {"included_domains", "excluded_domains", "learn_sources"}
-ENTITY_FIELDS = {"included_entities", "excluded_entities", "pinned_entities", "ignored_entities"}
+ENTITY_FIELDS = {
+    "included_entities",
+    "excluded_entities",
+    "pinned_entities",
+    "ignored_entities",
+    "context_entities",
+}
+PRESENCE_FIELDS = {"presence_entities"}
 AREA_FIELDS = {"included_areas", "excluded_areas"}
-BOOLEAN_FIELDS = {"all_areas", "pinned_use_slots", "debug"}
+BOOLEAN_FIELDS = {"all_areas", "pinned_use_slots", "consider_weekday", "debug"}
 
 
 def schema_for(keys, options):
     fields = {}
     for key in keys:
         value = options[key]
-        if key in ENTITY_FIELDS:
+        if key in PRESENCE_FIELDS:
             control = selector.EntitySelector(
                 selector.EntitySelectorConfig(
                     multiple=True,
-                    reorder=key == "pinned_entities",
-                    filter={"domain": SUPPORTED_DOMAINS},
+                    filter={"domain": PRESENCE_DOMAINS},
                 )
             )
+        elif key in ENTITY_FIELDS:
+            entity_config = {"multiple": True, "reorder": key == "pinned_entities"}
+            if key != "context_entities":
+                entity_config["filter"] = {"domain": SUPPORTED_DOMAINS}
+            control = selector.EntitySelector(selector.EntitySelectorConfig(**entity_config))
         elif key in AREA_FIELDS:
             control = selector.AreaSelector(selector.AreaSelectorConfig(multiple=True))
         elif key in BOOLEAN_FIELDS:
@@ -102,7 +125,7 @@ def normalize(values):
 
 
 class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
@@ -147,6 +170,16 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                         data_schema=schema_for(SECTIONS[section], options),
                         errors={"user_id": "unknown_user"},
                     )
+            if (
+                section == "context"
+                and options["presence_mode"] == "require_home"
+                and not options["presence_entities"]
+            ):
+                return self.async_show_form(
+                    step_id=section,
+                    data_schema=schema_for(SECTIONS[section], options),
+                    errors={"presence_entities": "presence_required"},
+                )
             return self.async_create_entry(title="", data=options)
         return self.async_show_form(
             step_id=section, data_schema=schema_for(SECTIONS[section], options)
@@ -160,6 +193,9 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_learning(self, user_input=None):
         return await self._section("learning", user_input)
+
+    async def async_step_context(self, user_input=None):
+        return await self._section("context", user_input)
 
     async def async_step_dashboard(self, user_input=None):
         return await self._section("dashboard", user_input)
