@@ -53,6 +53,7 @@ def test_reasons_are_translated():
         "presence_habit",
         "context_habit",
         "area_habit",
+        "ai_selected",
     }
 
 

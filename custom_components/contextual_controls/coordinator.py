@@ -1,7 +1,7 @@
 """Home Assistant event ingestion and snapshot-based statistical evaluation."""
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.automation import EVENT_AUTOMATION_TRIGGERED
@@ -16,6 +16,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.debounce import Debouncer
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
@@ -23,6 +24,14 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .ai import (
+    AIManager,
+    AIReranker,
+    OllamaProvider,
+    OpenAICompatibleProvider,
+    PrivacySettings,
+    build_prompt,
+)
 from .const import DEFAULTS, DOMAIN
 from .context import is_home, presence_status, snapshot_context
 from .eligibility import compose, eligible
@@ -36,6 +45,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        self.entry = entry
         self.options = {**DEFAULTS, **entry.options}
         interval = int(self.options["refresh_minutes"])
         super().__init__(
@@ -57,12 +67,16 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._dedup = Deduplicator()
         self._origins = OriginTracker()
         self._translations: dict[str, str] = {}
+        self._ai_manager: AIManager | None = None
+        self._ai_last_update: datetime | None = None
+        self._ai_status = "disabled"
 
     async def async_initialize(self) -> None:
         await self.history.async_load(dt_util.utcnow())
         self._translations = await async_get_translations(
             self.hass, self.hass.config.language, "entity", {DOMAIN}
         )
+        self._initialize_ai()
         self._rebuild()
         for event_type, listener in (
             (EVENT_CALL_SERVICE, self._service),
@@ -75,6 +89,25 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (ar.EVENT_AREA_REGISTRY_UPDATED, self._topology),
         ):
             self._unsubscribers.append(self.hass.bus.async_listen(event_type, listener))
+
+    def _initialize_ai(self) -> None:
+        provider_name = self.options["ai_provider"]
+        if provider_name == "disabled":
+            return
+        session = async_get_clientsession(self.hass)
+        common = (
+            session,
+            self.options["ollama_url" if provider_name == "ollama" else "openai_endpoint"],
+            self.options["ollama_model" if provider_name == "ollama" else "openai_model"],
+            self.options["ai_timeout_seconds"],
+            self.options["ai_temperature"],
+        )
+        if provider_name == "ollama":
+            provider: AIReranker = OllamaProvider(*common)
+        else:
+            provider = OpenAICompatibleProvider(*common, self.entry.data.get("openai_api_key", ""))
+        self._ai_manager = AIManager(provider, self.options["ai_min_refresh_minutes"])
+        self._ai_status = "ready"
 
     @callback
     def _rebuild(self) -> None:
@@ -257,6 +290,9 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             active_area_ids=active_areas,
             context_states=context,
         )
+        ai_used = False
+        ai_cached = False
+        ai_error = None
         if self.options["presence_mode"] == "require_home" and presence is not True:
             ranked = []
             selected = []
@@ -264,6 +300,73 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ranked = await self.hass.async_add_executor_job(
                 rank, tuple(candidates.values()), tuple(self.history.records), now, settings
             )
+            if self._ai_manager is not None and self.options["mode"] != "statistical" and ranked:
+                pool_size = int(self.options["candidate_pool_size"])
+                shortlist = ranked[:pool_size]
+                area_registry = ar.async_get(self.hass)
+                prompt_rows = []
+                for item in shortlist:
+                    state = self.hass.states.get(item.entity_id)
+                    area_id = self.areas.get(item.entity_id)
+                    area_entry = area_registry.async_get_area(area_id) if area_id else None
+                    prompt_rows.append(
+                        {
+                            "entity_id": item.entity_id,
+                            "friendly_name": state.attributes.get("friendly_name")
+                            if state
+                            else None,
+                            "state": state.state if state else None,
+                            "area": area_entry.name if area_entry else area_id,
+                            "score": item.score,
+                            "count": item.count,
+                            "reason": item.reason_key,
+                        }
+                    )
+                privacy = PrivacySettings(
+                    entity_id=self.options["ai_share_entity_id"],
+                    friendly_name=self.options["ai_share_friendly_name"],
+                    current_state=self.options["ai_share_current_state"],
+                    area=self.options["ai_share_area"],
+                    usage_statistics=self.options["ai_share_usage_statistics"],
+                    exact_timestamps=self.options["ai_share_exact_timestamps"],
+                    presence_information=self.options["ai_share_presence_information"],
+                    context_entities=self.options["ai_share_context_entities"],
+                )
+                context_rows = []
+                for index, (entity_id, state_value) in enumerate(context, 1):
+                    state = self.hass.states.get(entity_id)
+                    if privacy.entity_id:
+                        label = entity_id
+                    elif privacy.friendly_name and state:
+                        label = state.attributes.get("friendly_name", f"context_{index}")
+                    else:
+                        label = f"context_{index}"
+                    context_rows.append({"id": label, "state": state_value})
+                package = build_prompt(
+                    now,
+                    prompt_rows,
+                    privacy,
+                    presence_home=presence,
+                    context_states=context_rows,
+                )
+                outcome = await self._ai_manager.async_rerank(
+                    package, shortlist, self.options["mode"], now
+                )
+                ranked = outcome.ranked + ranked[pool_size:]
+                ai_used = outcome.used
+                ai_cached = outcome.cached
+                ai_error = outcome.error
+                if outcome.last_update is not None:
+                    self._ai_last_update = outcome.last_update
+                self._ai_status = (
+                    "cached"
+                    if outcome.cached
+                    else "used"
+                    if outcome.used
+                    else "throttled"
+                    if outcome.error == "minimum_refresh_interval"
+                    else "error"
+                )
             selected = compose(ranked, candidates, self.options)
         rows = []
         for index, item in enumerate(selected, 1):
@@ -285,8 +388,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         result = {
             "entities": rows,
             "last_update": now.isoformat(),
-            "mode": "statistical",
-            "ai_used": False,
+            "mode": self.options["mode"],
+            "ai_used": ai_used,
+            "ai_cached": ai_cached,
+            "ai_provider": self.options["ai_provider"],
+            "ai_status": self._ai_status,
+            "last_ai_update": self._ai_last_update.isoformat() if self._ai_last_update else None,
             "learning_period_days": settings.learning_period_days,
             "candidate_count": len(ranked),
             "presence_mode": self.options["presence_mode"],
@@ -295,6 +402,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "active_areas_count": len(active_areas),
             **self.history.counts(),
         }
+        if ai_error is not None:
+            result["ai_error"] = ai_error
         if self.options["debug"]:
             result["candidate_scores"] = {
                 item.entity_id: {

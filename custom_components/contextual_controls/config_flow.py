@@ -8,16 +8,18 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    AI_PROVIDERS,
     DEFAULTS,
     DOMAIN,
     LEARNING_SOURCES,
+    MODES,
     NAME,
     PRESENCE_DOMAINS,
     SUPPORTED_DOMAINS,
 )
 
 SECTIONS = {
-    "general": ("suggestion_count", "refresh_minutes"),
+    "general": ("mode", "suggestion_count", "refresh_minutes"),
     "entities": (
         "included_entities",
         "included_domains",
@@ -41,7 +43,31 @@ SECTIONS = {
     "dashboard": ("pinned_entities", "pinned_position", "pinned_use_slots"),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
 }
+AI_COMMON_FIELDS = (
+    "ai_provider",
+    "candidate_pool_size",
+    "ai_min_refresh_minutes",
+    "ai_share_entity_id",
+    "ai_share_friendly_name",
+    "ai_share_current_state",
+    "ai_share_area",
+    "ai_share_usage_statistics",
+    "ai_share_exact_timestamps",
+    "ai_share_presence_information",
+    "ai_share_context_entities",
+)
+AI_PROVIDER_FIELDS = {
+    "ollama": ("ollama_url", "ollama_model", "ai_timeout_seconds", "ai_temperature"),
+    "openai_compatible": (
+        "openai_endpoint",
+        "openai_model",
+        "ai_timeout_seconds",
+        "ai_temperature",
+    ),
+}
 CHOICES = {
+    "mode": MODES,
+    "ai_provider": AI_PROVIDERS,
     "included_domains": SUPPORTED_DOMAINS,
     "excluded_domains": SUPPORTED_DOMAINS,
     "learning_period_days": ["7", "14", "21", "30", "60", "90"],
@@ -64,7 +90,30 @@ ENTITY_FIELDS = {
 }
 PRESENCE_FIELDS = {"presence_entities"}
 AREA_FIELDS = {"included_areas", "excluded_areas"}
-BOOLEAN_FIELDS = {"all_areas", "pinned_use_slots", "consider_weekday", "debug"}
+BOOLEAN_FIELDS = {
+    "all_areas",
+    "pinned_use_slots",
+    "consider_weekday",
+    "debug",
+    "ai_share_entity_id",
+    "ai_share_friendly_name",
+    "ai_share_current_state",
+    "ai_share_area",
+    "ai_share_usage_statistics",
+    "ai_share_exact_timestamps",
+    "ai_share_presence_information",
+    "ai_share_context_entities",
+}
+TEXT_FIELDS = {"ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id"}
+NUMBER_RANGES = {
+    "suggestion_count": (1, 12, 1),
+    "minimum_confidence": (0, 100, 1),
+    "recency_weight": (0, 100, 1),
+    "candidate_pool_size": (6, 30, 1),
+    "ai_min_refresh_minutes": (5, 120, 1),
+    "ai_timeout_seconds": (1, 120, 1),
+    "ai_temperature": (0, 1, 0.1),
+}
 
 
 def schema_for(keys, options):
@@ -100,13 +149,16 @@ def schema_for(keys, options):
             )
             if key in NUMERIC_CHOICES:
                 value = str(value)
-        elif key == "user_id":
+        elif key in TEXT_FIELDS:
             control = selector.TextSelector()
         else:
-            minimum, maximum = (1, 12) if key == "suggestion_count" else (0, 100)
+            minimum, maximum, step = NUMBER_RANGES[key]
             control = selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=minimum, max=maximum, step=1, mode=selector.NumberSelectorMode.SLIDER
+                    min=minimum,
+                    max=maximum,
+                    step=step,
+                    mode=selector.NumberSelectorMode.SLIDER,
                 )
             )
         marker = vol.Optional if key == "user_id" else vol.Required
@@ -118,28 +170,50 @@ def normalize(values):
     return {
         key: int(value)
         if key in NUMERIC_CHOICES
-        or key in ("suggestion_count", "minimum_confidence", "recency_weight")
+        or key
+        in (
+            "suggestion_count",
+            "minimum_confidence",
+            "recency_weight",
+            "candidate_pool_size",
+            "ai_min_refresh_minutes",
+            "ai_timeout_seconds",
+        )
         else value
         for key, value in values.items()
     }
 
 
 class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
             self._name = user_input["name"].strip() or NAME
+            self._mode = user_input["mode"]
             return await self.async_step_entities()
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required("name", default=NAME): selector.TextSelector()}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required("name", default=NAME): selector.TextSelector(),
+                    vol.Required("mode", default=DEFAULTS["mode"]): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=MODES, translation_key="mode")
+                    ),
+                }
+            ),
         )
 
     async def async_step_entities(self, user_input=None):
         if user_input is not None:
             return self.async_create_entry(
-                title=self._name, data={}, options={**deepcopy(DEFAULTS), **normalize(user_input)}
+                title=self._name,
+                data={},
+                options={
+                    **deepcopy(DEFAULTS),
+                    "mode": self._mode,
+                    **normalize(user_input),
+                },
             )
         return self.async_show_form(
             step_id="entities",
@@ -156,7 +230,7 @@ class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class ContextualOptionsFlow(OptionsFlowWithReload):
     async def async_step_init(self, user_input=None):
-        return self.async_show_menu(step_id="init", menu_options=[*SECTIONS, "reset"])
+        return self.async_show_menu(step_id="init", menu_options=[*SECTIONS, "ai", "reset"])
 
     async def _section(self, section, user_input):
         options = {**deepcopy(DEFAULTS), **self.config_entry.options}
@@ -202,6 +276,56 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_advanced(self, user_input=None):
         return await self._section("advanced", user_input)
+
+    async def async_step_ai(self, user_input=None):
+        options = {**deepcopy(DEFAULTS), **self.config_entry.options}
+        if user_input is None:
+            return self.async_show_form(
+                step_id="ai", data_schema=schema_for(AI_COMMON_FIELDS, options)
+            )
+        options.update(normalize(user_input))
+        provider = options["ai_provider"]
+        if provider == "disabled":
+            return self.async_create_entry(title="", data=options)
+        self._pending_ai_options = options
+        return await getattr(self, f"async_step_ai_{provider}")()
+
+    async def async_step_ai_ollama(self, user_input=None):
+        options = self._pending_ai_options
+        if user_input is not None:
+            options.update(normalize(user_input))
+            return self.async_create_entry(title="", data=options)
+        return self.async_show_form(
+            step_id="ai_ollama",
+            data_schema=schema_for(AI_PROVIDER_FIELDS["ollama"], options),
+        )
+
+    async def async_step_ai_openai_compatible(self, user_input=None):
+        options = self._pending_ai_options
+        if user_input is not None:
+            api_key = user_input.pop("api_key", "").strip()
+            options.update(normalize(user_input))
+            if api_key:
+                data = {**self.config_entry.data, "openai_api_key": api_key}
+                self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+            if not self.config_entry.data.get("openai_api_key") and not api_key:
+                return self.async_show_form(
+                    step_id="ai_openai_compatible",
+                    data_schema=self._openai_schema(options),
+                    errors={"api_key": "api_key_required"},
+                )
+            return self.async_create_entry(title="", data=options)
+        return self.async_show_form(
+            step_id="ai_openai_compatible", data_schema=self._openai_schema(options)
+        )
+
+    @staticmethod
+    def _openai_schema(options):
+        fields = dict(schema_for(AI_PROVIDER_FIELDS["openai_compatible"], options).schema)
+        fields[vol.Optional("api_key")] = selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+        )
+        return vol.Schema(fields)
 
     async def async_step_reset(self, user_input=None):
         errors = {}

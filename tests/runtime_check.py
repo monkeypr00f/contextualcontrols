@@ -288,9 +288,10 @@ asyncio.run(read())
         old_options["learn_sources"] = ["user"]
         self.hass.config_entries.async_update_entry(entry, options=old_options, version=1)
         self.assertTrue(await self.hass.config_entries.async_reload(entry.entry_id))
-        self.assertEqual(entry.version, 2)
+        self.assertEqual(entry.version, 3)
         self.assertEqual(entry.options["learn_sources"], ["manual"])
         self.assertEqual(entry.options["presence_mode"], "signal")
+        self.assertEqual(entry.options["ai_provider"], "disabled")
         # Native options flow, automatic reload, pins and exclusion enforcement.
         flow = await self.hass.config_entries.options.async_init(entry.entry_id)
         self.assertEqual(flow["type"], "menu")

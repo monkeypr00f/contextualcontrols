@@ -1,7 +1,7 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 NAME = "Contextual Controls"
 STORAGE_VERSION = 3
 MAX_RECORDS = 50_000
@@ -17,6 +17,7 @@ SUPPORTED_DOMAINS = DEFAULT_DOMAINS + [
     "number",
 ]
 DEFAULTS = {
+    "mode": "hybrid",
     "included_entities": [],
     "included_domains": DEFAULT_DOMAINS,
     "excluded_entities": [],
@@ -43,7 +44,26 @@ DEFAULTS = {
     "minimum_confidence": 20,
     "cold_start": "recent",
     "debug": False,
+    "ai_provider": "disabled",
+    "candidate_pool_size": 15,
+    "ai_min_refresh_minutes": 15,
+    "ai_timeout_seconds": 15,
+    "ai_temperature": 0.1,
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "llama3.2",
+    "openai_endpoint": "https://api.openai.com",
+    "openai_model": "gpt-4.1-mini",
+    "ai_share_entity_id": True,
+    "ai_share_friendly_name": True,
+    "ai_share_current_state": True,
+    "ai_share_area": True,
+    "ai_share_usage_statistics": True,
+    "ai_share_exact_timestamps": False,
+    "ai_share_presence_information": False,
+    "ai_share_context_entities": True,
 }
 
 PRESENCE_DOMAINS = ["person", "device_tracker", "binary_sensor"]
 LEARNING_SOURCES = ["manual", "assist", "automation", "script", "unknown"]
+AI_PROVIDERS = ["disabled", "ollama", "openai_compatible"]
+MODES = ["hybrid", "statistical", "ai_assisted"]
