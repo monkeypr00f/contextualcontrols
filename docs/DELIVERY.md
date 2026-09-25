@@ -10,8 +10,9 @@ azionato durante le verifiche.
 Il proprietario e la repository sono ora definiti:
 [`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
 Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS ha
-installato la release v0.3.0 e il riavvio è riuscito. La Phase 3 (AI) non è
-stata implementata. Della Phase 4 è disponibile una prima card Tiles completa
+installato la release v0.3.0 e il riavvio è riuscito. La Phase 3 è pubblicata
+come v0.4.0 ma, per richiesta del proprietario, non è stata installata
+nell’istanza reale. Della Phase 4 è disponibile una prima card Tiles completa
 di editor visuale; layout Compact/Chips e pacchetto HACS Dashboard separato
 restano per la fase completa.
 
@@ -96,6 +97,11 @@ e [release v0.3.0](https://github.com/monkeypr00f/contextualcontrols/releases/ta
 La card è comparsa nel picker, l’editor visuale italiano ha salvato la
 configurazione e la dashboard ha mostrato i sei suggerimenti, inclusi stato e
 motivazione, senza interventi YAML.
+
+Phase 3 AI: [pull request #3](https://github.com/monkeypr00f/contextualcontrols/pull/3)
+e [release v0.4.0](https://github.com/monkeypr00f/contextualcontrols/releases/tag/v0.4.0).
+Il codice e il runtime temporaneo sono verificati; nessun file 0.4.0 è stato
+copiato nell’istanza domestica e HACS non è stato aggiornato.
 
 I checkpoint Git separano architettura, motore statistico, adattatori HA e
 verifica/documentazione. La history si consulta con `git log --oneline`.

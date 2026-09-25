@@ -1,6 +1,6 @@
 # Phase 3 — AI opzionale
 
-Versione candidata: 0.4.0. Questa fase è sviluppata e verificata nel repository,
+Versione: 0.4.0. Questa fase è sviluppata e verificata nel repository,
 ma non viene installata nell’istanza Home Assistant reale fino al completamento
 e a una successiva indicazione del proprietario.
 
