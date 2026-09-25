@@ -30,6 +30,27 @@ retention e migrazioni. Il test con il runtime Home Assistant verifica selector,
 reload delle opzioni, require-home, persistenza, migrazione della ConfigEntry,
 attribuzione Assist/manuale, diagnostics e assenza di chiamate autonome.
 
+La verifica finale comprende 56 test puri e 3 test completi con Home Assistant
+2026.9.3. Ruff, mypy, compilazione, hassfest e HACS validation sono passati nella
+[CI del merge](https://github.com/monkeypr00f/contextualcontrols/actions/runs/36158028359).
+
+## Verifica sull’istanza reale
+
+La release [v0.2.0](https://github.com/monkeypr00f/contextualcontrols/releases/tag/v0.2.0)
+è stata scaricata tramite HACS e caricata dopo un riavvio di Home Assistant.
+Sono stati verificati:
+
+- versione 0.2.0 nella pagina dell’integrazione e in HACS;
+- nuova sezione Contesto con selector nativi e modalità presenza;
+- filtri delle origini e confronto feriale/weekend nella sezione Apprendimento;
+- migrazione senza perdita dei tre record raccolti dalla versione precedente;
+- sensore disponibile con tre suggerimenti, `presence_mode: signal`,
+  `presence_home: null` e `context_entities_count: 0`;
+- assenza di errori cercando `contextual_controls` nei registri HA.
+
+Le opzioni sono state soltanto lette: la verifica non ha chiamato servizi di
+controllo e non ha modificato lo stato dei dispositivi.
+
 ## Limiti
 
 - Home Assistant non espone una singola API pubblica che identifichi sempre UI,
