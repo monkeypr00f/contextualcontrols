@@ -209,6 +209,25 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
             "Abitudine di questo tipo di giornata",
         )
         self.assertFalse(sensor.attributes["ai_used"])
+        # Provider failures preserve the statistical result and sensor availability.
+        from custom_components.contextual_controls.ai import AIManager, AIProviderError
+
+        class FailingProvider:
+            async def async_order(self, prompt, allowed):
+                raise AIProviderError("timeout")
+
+        coordinator.options["mode"] = "hybrid"
+        coordinator.options["ai_provider"] = "ollama"
+        coordinator._ai_manager = AIManager(FailingProvider(), 15)
+        coordinator._ai_status = "ready"
+        await coordinator.async_refresh()
+        sensor = self.hass.states.get("sensor.contextual_controls")
+        self.assertEqual(sensor.state, "1")
+        self.assertFalse(sensor.attributes["ai_used"])
+        self.assertEqual(sensor.attributes["ai_error"], "timeout")
+        self.assertEqual(sensor.attributes["entities"][0]["entity_id"], "light.test_contextual")
+        coordinator._ai_manager = None
+        coordinator.options["ai_provider"] = "disabled"
         # Context options reload the entry. Require-home gates the full output,
         # then presence/context are captured on the next voluntary command.
         flow = await self.hass.config_entries.options.async_init(entry.entry_id)
@@ -336,6 +355,30 @@ asyncio.run(read())
         )
         self.assertEqual(len(coordinator.history.records), 0)
         self.assertEqual(self.hass.states.get("sensor.contextual_controls").state, "1")
+        # The AI options flow stores credentials in ConfigEntry.data, then reloads.
+        flow = await self.hass.config_entries.options.async_init(entry.entry_id)
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "ai"}
+        )
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"ai_provider": "openai_compatible"}
+        )
+        self.assertEqual(flow["step_id"], "ai_openai_compatible")
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"],
+            {
+                "openai_endpoint": "http://local-model",
+                "openai_model": "test-model",
+                "ai_timeout_seconds": 5,
+                "ai_temperature": 0.1,
+                "api_key": "diagnostic-secret",
+            },
+        )
+        self.assertEqual(result["type"], "create_entry")
+        await self.hass.async_block_till_done()
+        self.assertEqual(entry.data["openai_api_key"], "diagnostic-secret")
+        coordinator = entry.runtime_data
+        self.assertEqual(coordinator.options["ai_provider"], "openai_compatible")
         from custom_components.contextual_controls.diagnostics import (
             async_get_config_entry_diagnostics,
         )
@@ -343,6 +386,7 @@ asyncio.run(read())
         diagnostics = await async_get_config_entry_diagnostics(self.hass, entry)
         self.assertNotIn("test_user", str(diagnostics))
         self.assertNotIn("test_contextual", str(diagnostics))
+        self.assertNotIn("diagnostic-secret", str(diagnostics))
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
 
 
