@@ -1,0 +1,274 @@
+{
+  "title": "Contextual Controls",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Contextual Controls",
+        "data": {
+          "name": "Nome istanza"
+        },
+        "description": "Impara localmente dai tuoi comandi e suggerisce controlli. Non comanda mai i dispositivi in autonomia. Phase 1 usa solo il ranking statistico."
+      },
+      "entities": {
+        "title": "Scegli i controlli",
+        "data": {
+          "included_entities": "Entità incluse",
+          "included_domains": "Domini inclusi automaticamente",
+          "excluded_entities": "Entità escluse"
+        },
+        "data_description": {
+          "included_entities": "Si aggiungono ai domini automatici. Le esclusioni prevalgono sempre, anche sui controlli fissi.",
+          "included_domains": "Svuota la lista per monitorare solo entità selezionate e fisse. Le serrature richiedono una selezione esplicita."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configura Contextual Controls",
+        "menu_options": {
+          "general": "Generale",
+          "entities": "Entità",
+          "learning": "Apprendimento",
+          "dashboard": "Dashboard",
+          "advanced": "Avanzate / Debug",
+          "reset": "Reset apprendimento"
+        }
+      },
+      "general": {
+        "title": "Generale",
+        "data": {
+          "suggestion_count": "Numero di suggerimenti",
+          "refresh_minutes": "Aggiornamento periodico"
+        },
+        "data_description": {
+          "refresh_minutes": "Gli eventi rilevanti aggiornano sempre con debounce. 15 minuti garantisce anche una valutazione periodica; solo eventi non aggiorna al solo passaggio del tempo."
+        }
+      },
+      "entities": {
+        "title": "Entità",
+        "data": {
+          "included_entities": "Entità incluse",
+          "included_domains": "Domini inclusi automaticamente",
+          "excluded_entities": "Entità escluse",
+          "excluded_domains": "Domini esclusi",
+          "all_areas": "Tutte le aree",
+          "included_areas": "Aree incluse",
+          "excluded_areas": "Aree escluse"
+        },
+        "data_description": {
+          "included_entities": "Si aggiungono ai domini automatici. Le esclusioni prevalgono sempre, anche sui controlli fissi.",
+          "included_domains": "Svuota la lista per monitorare solo entità selezionate e fisse. Le serrature richiedono una selezione esplicita.",
+          "all_areas": "Se disattivato, sono ammesse solo le entità nelle aree selezionate. L’area dell’entità prevale su quella del dispositivo."
+        }
+      },
+      "learning": {
+        "title": "Apprendimento",
+        "data": {
+          "learning_period_days": "Periodo di apprendimento",
+          "time_window_minutes": "Fascia temporale",
+          "recency_weight": "Peso della recenza",
+          "learn_sources": "Impara da",
+          "user_id": "ID utente specifico (opzionale)",
+          "ignored_entities": "Non imparare da queste entità"
+        },
+        "data_description": {
+          "learning_period_days": "Raccoglie dati dall’installazione, senza importare lo storico Recorder. Conserva fino a 90 giorni in locale.",
+          "time_window_minutes": "Simmetrica rispetto all’ora locale, anche a mezzanotte. ±90 alle 22:30 considera 21:00–00:00.",
+          "recency_weight": "0: nessun decadimento. 100: decadimento rapido. I tentativi di comando recenti pesano di più.",
+          "learn_sources": "I comandi diretti autenticati sono solitamente volontari, ma UI e API con token non sono distinguibili. Contesti derivati e comandi sconosciuti sono meno affidabili. Assist ha attribuzione limitata in Phase 1.",
+          "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
+          "ignored_entities": "Ferma il nuovo apprendimento e ignora le evidenze esistenti senza cancellare lo storico. I controlli fissi restano visibili."
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "data": {
+          "pinned_entities": "Controlli fissi",
+          "pinned_position": "Posizione controlli fissi",
+          "pinned_use_slots": "I controlli fissi occupano gli slot"
+        },
+        "data_description": {
+          "pinned_entities": "L’ordine è modificabile. Entità escluse o non disponibili restano nascoste.",
+          "pinned_use_slots": "Attivo: 2 fissi + 4 dinamici con limite 6. Disattivo: 2 fissi + 6 dinamici."
+        }
+      },
+      "advanced": {
+        "title": "Avanzate / Debug",
+        "data": {
+          "minimum_confidence": "Confidenza minima",
+          "cold_start": "Strategia iniziale",
+          "debug": "Abilita attributi di debug"
+        },
+        "data_description": {
+          "minimum_confidence": "I candidati sotto soglia sono omessi. I fissi non sono soggetti alla soglia. Durante l’apprendimento è normale vedere meno controlli.",
+          "cold_start": "Usata finché un’entità non ha tre registrazioni ammesse. Il default è controlli recenti più fissi. I default per dominio richiedono scelta esplicita.",
+          "debug": "Aggiunge dettagli dei punteggi per massimo 30 candidati. Può contenere ID entità; disattiva prima di condividere schermate."
+        }
+      },
+      "reset": {
+        "title": "Reset apprendimento",
+        "data": {
+          "entity_id": "Entità (opzionale)",
+          "user_id": "ID utente specifico (opzionale)",
+          "confirm": "Conferma reset apprendimento"
+        },
+        "data_description": {
+          "entity_id": "Se specificata, resetta solo questa entità. Insieme al filtro utente resetta la loro intersezione.",
+          "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
+          "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+        }
+      }
+    },
+    "error": {
+      "unknown_user": "ID utente non trovato.",
+      "confirmation_required": "Conferma il reset prima di continuare.",
+      "entry_not_loaded": "Questa istanza deve essere caricata."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "suggestions": {
+        "name": "Contextual Controls",
+        "state_attributes": {
+          "reason": {
+            "name": "Motivo",
+            "state": {
+              "pinned": "Controllo fisso",
+              "habit": "Usato frequentemente in questa fascia oraria",
+              "recent": "Controllo usato di recente",
+              "frequent": "Controllo usato frequentemente",
+              "domain_default": "Selezionato dai default di dominio configurati"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_user": {
+      "message": "ID utente non trovato."
+    },
+    "confirmation_required": {
+      "message": "Conferma il reset prima di continuare."
+    },
+    "entry_not_loaded": {
+      "message": "Questa istanza deve essere caricata."
+    },
+    "storage_unavailable": {
+      "message": "Impossibile caricare lo storico. Ripristina un backup o controlla i registri."
+    }
+  },
+  "services": {
+    "reset_learning": {
+      "name": "Reset apprendimento",
+      "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Istanza integrazione"
+        },
+        "entity_id": {
+          "name": "Entità (opzionale)",
+          "description": "Se specificata, resetta solo questa entità. Insieme al filtro utente resetta la loro intersezione."
+        },
+        "user_id": {
+          "name": "ID utente specifico (opzionale)",
+          "description": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile."
+        },
+        "confirm": {
+          "name": "Conferma reset apprendimento",
+          "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+        }
+      }
+    }
+  },
+  "selector": {
+    "learning_period_days": {
+      "options": {
+        "7": "7 giorni",
+        "14": "14 giorni",
+        "21": "21 giorni",
+        "30": "30 giorni",
+        "60": "60 giorni",
+        "90": "90 giorni"
+      }
+    },
+    "time_window_minutes": {
+      "options": {
+        "30": "±30 minuti",
+        "60": "±60 minuti",
+        "90": "±90 minuti",
+        "120": "±120 minuti",
+        "180": "±180 minuti"
+      }
+    },
+    "refresh_minutes": {
+      "options": {
+        "0": "Solo eventi rilevanti",
+        "5": "5 minuti + eventi",
+        "10": "10 minuti + eventi",
+        "15": "15 minuti + eventi",
+        "30": "30 minuti + eventi",
+        "60": "60 minuti + eventi"
+      }
+    },
+    "learn_sources": {
+      "options": {
+        "user": "Comandi diretti autenticati",
+        "child": "Contesti derivati (script/automazioni, incerti)",
+        "unknown": "Chiamate servizio non attribuibili"
+      }
+    },
+    "pinned_position": {
+      "options": {
+        "before": "Prima dei suggerimenti",
+        "after": "Dopo i suggerimenti"
+      }
+    },
+    "cold_start": {
+      "options": {
+        "pinned": "Solo controlli fissi",
+        "recent": "Controlli recenti + fissi",
+        "frequent": "Controlli usati frequentemente",
+        "domains": "Default per dominio (esplicito)"
+      }
+    },
+    "included_domains": {
+      "options": {
+        "light": "light",
+        "switch": "switch",
+        "cover": "cover",
+        "climate": "climate",
+        "media_player": "media_player",
+        "scene": "scene",
+        "script": "script",
+        "fan": "fan",
+        "lock": "lock",
+        "button": "button",
+        "input_boolean": "input_boolean",
+        "vacuum": "vacuum",
+        "select": "select",
+        "number": "number"
+      }
+    },
+    "excluded_domains": {
+      "options": {
+        "light": "light",
+        "switch": "switch",
+        "cover": "cover",
+        "climate": "climate",
+        "media_player": "media_player",
+        "scene": "scene",
+        "script": "script",
+        "fan": "fan",
+        "lock": "lock",
+        "button": "button",
+        "input_boolean": "input_boolean",
+        "vacuum": "vacuum",
+        "select": "select",
+        "number": "number"
+      }
+    }
+  }
+}

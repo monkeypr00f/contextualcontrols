@@ -1,0 +1,12 @@
+{
+  "domain": "contextual_controls",
+  "name": "Contextual Controls",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/REPLACE_ME/contextual-controls",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/REPLACE_ME/contextual-controls/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

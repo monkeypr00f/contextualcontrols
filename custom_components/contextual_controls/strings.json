@@ -1,0 +1,274 @@
+{
+  "title": "Contextual Controls",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Contextual Controls",
+        "data": {
+          "name": "Instance name"
+        },
+        "description": "Learns locally from your commands and suggests controls. It never controls devices automatically. Phase 1 uses statistical ranking only."
+      },
+      "entities": {
+        "title": "Choose controls",
+        "data": {
+          "included_entities": "Included entities",
+          "included_domains": "Automatically included domains",
+          "excluded_entities": "Excluded entities"
+        },
+        "data_description": {
+          "included_entities": "Combined with automatic domains. Explicit exclusions always win, including over pins.",
+          "included_domains": "Clear this list to monitor only explicitly selected and pinned entities. Locks require explicit entity selection."
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure Contextual Controls",
+        "menu_options": {
+          "general": "General",
+          "entities": "Entities",
+          "learning": "Learning",
+          "dashboard": "Dashboard",
+          "advanced": "Advanced / Debug",
+          "reset": "Reset learning"
+        }
+      },
+      "general": {
+        "title": "General",
+        "data": {
+          "suggestion_count": "Number of suggestions",
+          "refresh_minutes": "Periodic refresh"
+        },
+        "data_description": {
+          "refresh_minutes": "Relevant events always refresh with debounce. 15 minutes also guarantees a periodic evaluation; events-only does not update merely because the clock changed."
+        }
+      },
+      "entities": {
+        "title": "Entities",
+        "data": {
+          "included_entities": "Included entities",
+          "included_domains": "Automatically included domains",
+          "excluded_entities": "Excluded entities",
+          "excluded_domains": "Excluded domains",
+          "all_areas": "All areas",
+          "included_areas": "Included areas",
+          "excluded_areas": "Excluded areas"
+        },
+        "data_description": {
+          "included_entities": "Combined with automatic domains. Explicit exclusions always win, including over pins.",
+          "included_domains": "Clear this list to monitor only explicitly selected and pinned entities. Locks require explicit entity selection.",
+          "all_areas": "When disabled, only entities in selected areas are eligible. Entity area takes precedence over device area."
+        }
+      },
+      "learning": {
+        "title": "Learning",
+        "data": {
+          "learning_period_days": "Learning period",
+          "time_window_minutes": "Time window",
+          "recency_weight": "Recency weight",
+          "learn_sources": "Learn from",
+          "user_id": "Specific user ID (optional)",
+          "ignored_entities": "Do not learn these entities"
+        },
+        "data_description": {
+          "learning_period_days": "Collects from installation onward; does not import Recorder history. Up to 90 days are retained locally.",
+          "time_window_minutes": "Symmetric around the current local time, including midnight. ±90 at 22:30 covers 21:00–00:00.",
+          "recency_weight": "0: no decay. 100: faster decay. Recent command attempts contribute more.",
+          "learn_sources": "Authenticated direct calls are usually voluntary, but UI and token-based APIs are indistinguishable. Child contexts and unknown calls are less reliable. Assist attribution is limited in Phase 1.",
+          "user_id": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles.",
+          "ignored_entities": "Stops new learning and hides existing statistical evidence without deleting history. Pins remain visible."
+        }
+      },
+      "dashboard": {
+        "title": "Dashboard",
+        "data": {
+          "pinned_entities": "Pinned controls",
+          "pinned_position": "Pinned position",
+          "pinned_use_slots": "Pinned controls occupy slots"
+        },
+        "data_description": {
+          "pinned_entities": "Order can be rearranged. Excluded or unavailable entities remain hidden.",
+          "pinned_use_slots": "Enabled: 2 pins + 4 dynamic controls for a limit of 6. Disabled: 2 pins + 6 dynamic controls."
+        }
+      },
+      "advanced": {
+        "title": "Advanced / Debug",
+        "data": {
+          "minimum_confidence": "Minimum confidence",
+          "cold_start": "Cold start strategy",
+          "debug": "Enable debug attributes"
+        },
+        "data_description": {
+          "minimum_confidence": "Candidates below this statistical threshold are omitted. Pins bypass it. Fewer controls are normal during learning.",
+          "cold_start": "Used until an entity has three matching records. Recent controls plus pins is the default. Domain defaults is an explicit opt-in.",
+          "debug": "Adds score details for up to 30 ranked candidates. May contain entity IDs; disable before sharing screenshots."
+        }
+      },
+      "reset": {
+        "title": "Reset learning",
+        "data": {
+          "entity_id": "Entity (optional)",
+          "user_id": "Specific user ID (optional)",
+          "confirm": "Confirm learning reset"
+        },
+        "data_description": {
+          "entity_id": "If set, reset only this entity. Combined with a user filter, resets their intersection.",
+          "user_id": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles.",
+          "confirm": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
+        }
+      }
+    },
+    "error": {
+      "unknown_user": "Unknown user ID.",
+      "confirmation_required": "Confirm the reset before continuing.",
+      "entry_not_loaded": "This integration instance must be loaded."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "suggestions": {
+        "name": "Contextual Controls",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "pinned": "Pinned control",
+              "habit": "Frequently used around this time",
+              "recent": "Recently used control",
+              "frequent": "Frequently used control",
+              "domain_default": "Selected by the configured domain defaults"
+            }
+          }
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "unknown_user": {
+      "message": "Unknown user ID."
+    },
+    "confirmation_required": {
+      "message": "Confirm the reset before continuing."
+    },
+    "entry_not_loaded": {
+      "message": "This integration instance must be loaded."
+    },
+    "storage_unavailable": {
+      "message": "Learning storage could not be loaded. Restore a backup or check the logs."
+    }
+  },
+  "services": {
+    "reset_learning": {
+      "name": "Reset learning",
+      "description": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Integration instance"
+        },
+        "entity_id": {
+          "name": "Entity (optional)",
+          "description": "If set, reset only this entity. Combined with a user filter, resets their intersection."
+        },
+        "user_id": {
+          "name": "Specific user ID (optional)",
+          "description": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles."
+        },
+        "confirm": {
+          "name": "Confirm learning reset",
+          "description": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
+        }
+      }
+    }
+  },
+  "selector": {
+    "learning_period_days": {
+      "options": {
+        "7": "7 days",
+        "14": "14 days",
+        "21": "21 days",
+        "30": "30 days",
+        "60": "60 days",
+        "90": "90 days"
+      }
+    },
+    "time_window_minutes": {
+      "options": {
+        "30": "±30 minutes",
+        "60": "±60 minutes",
+        "90": "±90 minutes",
+        "120": "±120 minutes",
+        "180": "±180 minutes"
+      }
+    },
+    "refresh_minutes": {
+      "options": {
+        "0": "Relevant events only",
+        "5": "5 minutes + events",
+        "10": "10 minutes + events",
+        "15": "15 minutes + events",
+        "30": "30 minutes + events",
+        "60": "60 minutes + events"
+      }
+    },
+    "learn_sources": {
+      "options": {
+        "user": "Authenticated direct commands",
+        "child": "Child contexts (scripts/automations, uncertain)",
+        "unknown": "Unattributed service calls"
+      }
+    },
+    "pinned_position": {
+      "options": {
+        "before": "Before suggestions",
+        "after": "After suggestions"
+      }
+    },
+    "cold_start": {
+      "options": {
+        "pinned": "Pinned only",
+        "recent": "Recent controls + pins",
+        "frequent": "Frequently used controls",
+        "domains": "Domain defaults (opt-in)"
+      }
+    },
+    "included_domains": {
+      "options": {
+        "light": "light",
+        "switch": "switch",
+        "cover": "cover",
+        "climate": "climate",
+        "media_player": "media_player",
+        "scene": "scene",
+        "script": "script",
+        "fan": "fan",
+        "lock": "lock",
+        "button": "button",
+        "input_boolean": "input_boolean",
+        "vacuum": "vacuum",
+        "select": "select",
+        "number": "number"
+      }
+    },
+    "excluded_domains": {
+      "options": {
+        "light": "light",
+        "switch": "switch",
+        "cover": "cover",
+        "climate": "climate",
+        "media_player": "media_player",
+        "scene": "scene",
+        "script": "script",
+        "fan": "fan",
+        "lock": "lock",
+        "button": "button",
+        "input_boolean": "input_boolean",
+        "vacuum": "vacuum",
+        "select": "select",
+        "number": "number"
+      }
+    }
+  }
+}

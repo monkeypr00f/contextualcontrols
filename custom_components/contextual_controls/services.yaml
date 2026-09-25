@@ -1,0 +1,18 @@
+reset_learning:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: contextual_controls
+    entity_id:
+      selector:
+        entity: {}
+    user_id:
+      selector:
+        text: {}
+    confirm:
+      required: true
+      default: false
+      selector:
+        boolean: {}
