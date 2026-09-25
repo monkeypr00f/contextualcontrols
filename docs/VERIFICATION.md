@@ -7,11 +7,16 @@ Core 2026.9.3, container `homeassistant`, directory host
 `/home/homeassistant/custom_components/contextual_controls`.
 Creato e verificato `sensor.contextual_controls` dalla UI italiana.
 
-**Pubblicazione e verifica download HACS ancora pendenti:** serve l’URL GitHub
-del proprietario. Il manifest contiene URL `REPLACE_ME` e codeowners vuoto.
-La struttura locale è conforme e passa hassfest, ma non viene presentata come
-repository già pubblicata o scaricata da HACS. La CI HACS è configurata; non è
-stata eseguita su GitHub. Nessun avanzamento alla Phase 2.
+**Pubblicazione e verifica download HACS ancora pendenti.** Il proprietario
+indicato dall’utente è `@monkeypr00f` e la repository è
+`https://github.com/monkeypr00f/contextualcontrols`. Manifest e documentazione
+sono aggiornati, senza segnaposto. Il controllo anonimo dell’API GitHub ha
+restituito HTTP 404; questo non distingue una repository privata da una assente.
+`git ls-remote` non ha trovato credenziali HTTPS locali disponibili.
+
+La struttura locale passa hassfest, ma non viene presentata come repository
+scaricata da HACS. La CI è configurata ma non ancora eseguita su GitHub.
+Nessun avanzamento alla Phase 2.
 
 ## Test eseguiti
 
@@ -94,4 +99,4 @@ Nessun token o password è salvato nella repository.
 - AI, fallback provider e relativi test sono Phase 3.
 - Card dinamica ed editor visuale sono Phase 4. Il sensore da solo non genera tile.
 - La conservazione è limitata a 90 giorni e 50.000 eventi per istanza.
-- Le chiamate HACS/GitHub CI richiedono la pubblicazione e il vero proprietario.
+- Le verifiche HACS/GitHub CI richiedono la pubblicazione della repository indicata.

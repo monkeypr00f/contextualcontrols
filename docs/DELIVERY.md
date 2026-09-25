@@ -4,8 +4,12 @@ Installata nell’istanza locale Home Assistant Core 2026.9.3 e configurata dall
 UI. `sensor.contextual_controls` è operativo e parte da 0, in attesa degli
 utilizzi autentici. Nessun dispositivo è stato azionato durante la verifica.
 
-La chiusura del criterio HACS è **pendente**: manca il proprietario/URL GitHub
-per sostituire `REPLACE_ME`, compilare codeowners e provare il download reale.
+Il proprietario e la repository sono ora definiti:
+[`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
+Manifest, codeowner e istruzioni sono aggiornati. Il criterio HACS resta
+**pendente** finché la repository non è pubblicamente accessibile e il download
+non è verificato: il controllo GitHub anonimo ha restituito HTTP 404 e non sono
+disponibili credenziali Git locali per il push.
 Non sono state implementate le fasi 2–4.
 
 ## Materiale

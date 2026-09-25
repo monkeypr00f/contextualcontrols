@@ -1,12 +1,14 @@
 {
   "domain": "contextual_controls",
   "name": "Contextual Controls",
-  "codeowners": [],
+  "codeowners": [
+    "@monkeypr00f"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/REPLACE_ME/contextual-controls",
+  "documentation": "https://github.com/monkeypr00f/contextualcontrols",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/REPLACE_ME/contextual-controls/issues",
+  "issue_tracker": "https://github.com/monkeypr00f/contextualcontrols/issues",
   "requirements": [],
   "version": "0.1.0"
 }

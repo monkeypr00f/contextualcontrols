@@ -31,13 +31,13 @@ o nomi già occupati producono ID differenti: verifica il dispositivo creato.
 
 ## Installazione HACS
 
-La repository deve essere pubblicata su GitHub prima che HACS possa scaricarla.
-Finché il proprietario non è definito, gli URL `REPLACE_ME` nel manifest sono
-segnaposto e la validazione di pubblicazione non può essere dichiarata conclusa.
+Repository: [monkeypr00f/contextualcontrols](https://github.com/monkeypr00f/contextualcontrols).
+I metadati indicano questo repository e il manutentore `@monkeypr00f`.
 
-Per il manutentore: imposta `documentation`, `issue_tracker` e `codeowners` nel
-manifest con il vero account/repository, aggiungi descrizione e topic GitHub,
-pubblica i file e preferibilmente una release `v0.1.0`. Esegui la CI.
+Per il manutentore: la repository deve essere pubblica e contenere questi file.
+Aggiungi descrizione e topic GitHub, pubblica preferibilmente una release
+`v0.1.0` ed esegui la CI. La disponibilità del repository e il download HACS
+vanno verificati dopo la pubblicazione.
 La submission a Home Assistant Brands e l’inclusione nel catalogo HACS predefinito
 sono separate dall’installazione come repository personalizzata. La CI HACS
 ignora esclusivamente `brands` finché non viene completata tale submission.
@@ -45,7 +45,7 @@ ignora esclusivamente `brands` finché non viene completata tale submission.
 Per installare una repository pubblicata:
 
 1. Apri HACS → menu ⋮ → **Repository personalizzate**.
-2. Incolla l’URL GitHub effettivo e scegli categoria **Integrazione**.
+2. Incolla `https://github.com/monkeypr00f/contextualcontrols` e scegli categoria **Integrazione**.
 3. Cerca Contextual Controls in HACS, scarica e riavvia Home Assistant.
 4. Aggiungi l’integrazione dalle impostazioni come sopra.
 
