@@ -5,16 +5,18 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Phase 1, versione 0.1.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Phase 2, versione 0.2.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento e ranking sono completamente locali. Nessun account AI, nessuna
-API key, nessun servizio esterno. Il codice delle fasi successive non è incluso.
+API key, nessun servizio esterno. Presenza, giorno della settimana, area e
+contesto casa contribuiscono al ranking senza eseguire comandi.
 
 La distribuzione HACS è di tipo **Integration**. La futura card avrà una
 repository HACS Dashboard separata. In questa versione il risultato è un sensore;
 non viene aggiunta automaticamente una sezione dinamica alla dashboard.
 
 > Screenshot placeholder: qui verrà mostrata la card nella Phase 4. Le schermate
-> di configurazione e la verifica della Phase 1 sono descritte in `docs/VERIFICATION.md`.
+> di configurazione e le verifiche sono descritte in `docs/VERIFICATION.md` e
+> `docs/PHASE2.md`.
 
 ## Installazione manuale
 
@@ -34,7 +36,7 @@ o nomi già occupati producono ID differenti: verifica il dispositivo creato.
 Repository: [monkeypr00f/contextualcontrols](https://github.com/monkeypr00f/contextualcontrols).
 I metadati indicano questo repository e il manutentore `@monkeypr00f`.
 
-Repository pubblicata e download HACS verificato sulla versione 0.1.0.
+Repository pubblicata e download HACS verificato a partire dalla versione 0.1.0.
 La submission a Home Assistant Brands e l’inclusione nel catalogo HACS predefinito
 sono separate dall’installazione come repository personalizzata. La CI HACS
 ignora esclusivamente `brands` finché non viene completata tale submission.
@@ -59,6 +61,7 @@ In **Configura** trovi sezioni separate:
 | Generale | Numero suggerimenti 1–12; refresh periodico e su eventi |
 | Entità | Inclusioni/esclusioni, domini, aree |
 | Apprendimento | 7–90 giorni, fascia ±30–180 minuti, recenza, origine, profilo, entità ignorate |
+| Contesto | Presenza, modalità presenza, entità contestuali |
 | Dashboard | Controlli fissi ordinabili, prima/dopo, occupazione degli slot |
 | Avanzate / Debug | Soglia minima, cold start, dettagli dei punteggi |
 | Reset | Cancellazione confermata per istanza, entità o utente |
@@ -69,7 +72,7 @@ server HA, perché un sensore condiviso non può avere attributi diversi per bro
 
 ## Modalità Statistical / Hybrid / AI
 
-**Statistical** è l’unica modalità implementata nella Phase 1. Non vengono
+**Statistical** è l’unica modalità implementata nella Phase 2. Non vengono
 mostrati provider o opzioni AI non funzionanti. Hybrid e AI-assisted arriveranno
 con la Phase 3, dopo la validazione delle fasi precedenti.
 
@@ -86,22 +89,26 @@ non sono un’azione volontaria dell’utente.
 
 Un evento indica un **tentativo di comando**, non una garanzia di successo.
 Dashboard e API esterne che usano un token utente non sono sempre distinguibili.
-Assist senza utente diretto, script derivati e automazioni non sono classificabili
-con certezza nella Phase 1. I contesti derivati e sconosciuti sono opt-in e hanno
-confidence inferiore. Uno script lanciato direttamente dall’utente è appreso
-come controllo script; le azioni interne non diventano automaticamente manuali.
+Assist, script e automazioni sono riconosciuti quando la catena Context di Home
+Assistant fornisce un’origine osservabile. I casi ambigui restano unknown con
+confidence bassa. Manual UI e Assist sono attivi di default; automazioni, azioni
+interne agli script e unknown sono opt-in. Uno script lanciato direttamente
+dall’utente resta un controllo manuale; le sue azioni interne sono classificate
+separatamente.
 
 I target espliciti, area, dispositivo, gruppo, piano ed etichetta usano il resolver
 HA e sono intersecati con le entità consentite. Sono apprese solo azioni di
 controllo riconosciute; creazione scene, reload e richieste di dati sono ignorati.
 
 Ogni utilizzo registra timestamp, entity ID, user ID se disponibile, origine,
-azione, confidence e area. Il periodo di scoring è configurabile; la retention
+azione, confidence, area, presenza e una snapshot delle sole entità contestuali
+scelte. Il periodo di scoring è configurabile; la retention
 locale arriva a 90 giorni e massimo 50.000 eventi. I dati partono dall’installazione:
 nessuna importazione dello storico Recorder e nessuna query SQL.
 
 Il punteggio combina quantità degli utilizzi, vicinanza all’ora attuale, decadimento
-temporale, confidence e plausibilità dello stato. Esempio: una luce già accesa
+temporale, giorno, presenza, area, contesto, confidence e plausibilità dello stato.
+Esempio: una luce già accesa
 rimane interessante se normalmente viene spenta a quest’ora. Le scene non sono
 interpretate semanticamente. L’orario segue il fuso configurato in HA, anche
 attraversando mezzanotte. Le formule sono in [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -111,8 +118,11 @@ sensore vale 0: è normale. Dopo almeno tre eventi per entità prevale il modell
 temporale. I candidati sotto soglia restano esclusi; non si riempiono gli slot
 con raccomandazioni inventate. I fissi rispettano esclusioni, aree e disponibilità.
 
-Presenza, affinità per area, giorno feriale/weekend e contesto casa sono Phase 2.
-In Phase 1 le aree filtrano l’ammissibilità e vengono conservate nei record.
+Il confronto dei giorni può usare lo stesso giorno esatto, feriale/weekend o
+nessuna distinzione. La presenza può essere ignorata, usata come segnale oppure
+richiesta: in quest’ultimo caso vengono nascosti anche i controlli fissi quando
+nessuna entità configurata è a casa. Gli stati contestuali sono confrontati come
+valori opachi, senza inferenze semantiche.
 
 ## Privacy e sicurezza
 
@@ -132,7 +142,7 @@ non esegue alcuna azione sui dispositivi: la futura card userà more-info per i
 controlli sensibili. La selezione delle entità in questa integrazione non crea
 un nuovo sistema di permessi: valgono i permessi nativi Home Assistant.
 
-## Risultato e Lovelace nella Phase 1
+## Risultato e Lovelace nella Phase 2
 
 Apri il sensore oppure Strumenti per sviluppatori → Stati. Lo stato è il numero
 di controlli, inclusi i fissi. Attributi: `entities`, `last_update`, `mode`,
@@ -151,13 +161,15 @@ entities:
     usage_count_in_window: 0
   - entity_id: light.camera
     score: 0.8123
-    reason: Usato frequentemente in questa fascia oraria
+    reason: Usato spesso con la presenza attuale
     source: statistical
     rank: 2
     pinned: false
     usage_count_in_window: 8
 mode: statistical
 ai_used: false
+presence_mode: signal
+presence_home: true
 ```
 
 Per visualizzare il sensore senza YAML: modifica la dashboard, aggiungi una card
@@ -197,7 +209,7 @@ un controllo usa invece Entità escluse.
 - **Storico dopo restart:** Store viene riletto. Non rimuovere e ricreare l’istanza
   per aggiornare, perché la rimozione elimina i suoi dati.
 - **Posso usare più istanze?** Sì, hanno Store e sensori indipendenti.
-- **Funziona senza internet?** Sì, integralmente nella Phase 1.
+- **Funziona senza internet?** Sì, integralmente nelle Phase 1–2.
 - **Perché non uso già AI?** Prima si verifica l’apprendimento locale; non è
   necessario un modello esterno per produrre suggerimenti.
 
@@ -221,8 +233,9 @@ python -m unittest tests.runtime_check -v
 ```
 
 CI include syntax, lint, tipi del motore, pytest, test runtime HA, hassfest e HACS.
-Ultima verifica: 48 test locali e 3 test HA passati; hassfest senza errori.
-I test AI, weekday/presenza e frontend appartengono alle fasi future. Risultati
+Ultima verifica locale: 56 test passati. La CI esegue inoltre 3 test completi
+con Home Assistant 2026.9.3, hassfest e HACS. I test AI e frontend appartengono
+alle fasi future. Risultati
 e limiti della verifica effettiva sono in [docs/VERIFICATION.md](docs/VERIFICATION.md).
 
 Licenza MIT. Le decisioni e le fonti ufficiali sono in
