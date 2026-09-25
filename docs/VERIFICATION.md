@@ -7,17 +7,17 @@ Core 2026.9.3, container `homeassistant`, directory host
 `/home/homeassistant/custom_components/contextual_controls`.
 Creato e verificato `sensor.contextual_controls` dalla UI italiana.
 
-**Pubblicazione e verifica download HACS ancora pendenti.** Il proprietario
-indicato dall’utente è `@monkeypr00f` e la repository è
-`https://github.com/monkeypr00f/contextualcontrols`. Manifest e documentazione
-sono aggiornati, senza segnaposto. Dopo il nuovo controllo richiesto dall’utente,
-l’API GitHub conferma che la repository è pubblica e `git ls-remote` conferma
-che non contiene ancora branch. Il tentativo di `git push -u origin main`
-si è fermato prima della pubblicazione perché Git non dispone di credenziali
-HTTPS locali. Nessun contenuto remoto è stato sovrascritto.
+Repository pubblicata su [GitHub](https://github.com/monkeypr00f/contextualcontrols).
+La [CI sul commit eaa9a6f](https://github.com/monkeypr00f/contextualcontrols/actions/runs/36126561405)
+è passata: core, homeassistant-runtime, hassfest e HACS.
+Il primo run ha rilevato una dipendenza di sviluppo mancante per mypy;
+`voluptuous` è ora dichiarata in requirements-dev.txt.
 
-La struttura locale passa hassfest, ma non viene presentata come repository
-scaricata da HACS. La CI è configurata ma non ancora eseguita su GitHub.
+La repository è stata aggiunta a HACS come Integrazione e il download del
+commit eaa9a6f è riuscito sulla vera istanza. Il riavvio richiesto da HACS è
+stato completato.
+Il codice dell’integrazione coincide con quello già caricato e verificato;
+questo download non ha modificato configurazione o apprendimento.
 Nessun avanzamento alla Phase 2.
 
 ## Test eseguiti
@@ -46,7 +46,7 @@ validazione dell’integrazione è privo di warning.
 
 | # | Criterio | Evidenza / limite |
 | --- | --- | --- |
-| 1 | Repository riconosciuta da HACS | Struttura e CI pronte; prova su repository pubblica pendente |
+| 1 | Repository riconosciuta da HACS | Aggiunta e download riusciti sulla vera istanza; validazione HACS CI passata |
 | 2 | HA carica senza errori | Caricamento live e test runtime |
 | 3 | Aggiunta interamente da UI | Eseguita sulla vera istanza |
 | 4 | Selezione entità | Selector visto nel setup e nelle opzioni; schema testato |
@@ -101,4 +101,4 @@ Nessun token o password è salvato nella repository.
 - AI, fallback provider e relativi test sono Phase 3.
 - Card dinamica ed editor visuale sono Phase 4. Il sensore da solo non genera tile.
 - La conservazione è limitata a 90 giorni e 50.000 eventi per istanza.
-- Le verifiche HACS/GitHub CI richiedono la pubblicazione della repository indicata.
+- HACS è verificato come repository personalizzata; Brands e catalogo predefinito sono submission separate.

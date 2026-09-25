@@ -6,10 +6,8 @@ utilizzi autentici. Nessun dispositivo è stato azionato durante la verifica.
 
 Il proprietario e la repository sono ora definiti:
 [`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
-Manifest, codeowner e istruzioni sono aggiornati. Il criterio HACS resta
-**pendente** fino alla pubblicazione del codice e alla verifica del download.
-La repository è ora pubblica e raggiungibile, ma vuota. Il push è bloccato
-dall’assenza di credenziali GitHub configurate sul Mac.
+Codice pubblicato, CI passata e repository riconosciuta da HACS.
+Il download sulla vera istanza e il successivo riavvio sono riusciti.
 Non sono state implementate le fasi 2–4.
 
 ## Materiale
@@ -59,7 +57,8 @@ vere API HA in una configurazione temporanea, separata dal processo della casa.
 48 test locali + 3 test HA passati. Ruff, mypy, compilazione e hassfest passati.
 La persistenza è verificata rileggendo il file Store da un processo nuovo.
 Setup, traduzioni, opzioni, reload e risultato del sensore sono verificati
-anche dal browser sull’istanza reale. CI GitHub e download HACS non ancora eseguiti.
+anche dal browser sull’istanza reale. CI GitHub e download HACS sono passati;
+dettagli e link sono in VERIFICATION.md.
 
 I checkpoint Git separano architettura, motore statistico, adattatori HA e
 verifica/documentazione. La history si consulta con `git log --oneline`.

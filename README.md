@@ -34,10 +34,7 @@ o nomi già occupati producono ID differenti: verifica il dispositivo creato.
 Repository: [monkeypr00f/contextualcontrols](https://github.com/monkeypr00f/contextualcontrols).
 I metadati indicano questo repository e il manutentore `@monkeypr00f`.
 
-Per il manutentore: la repository deve essere pubblica e contenere questi file.
-Aggiungi descrizione e topic GitHub, pubblica preferibilmente una release
-`v0.1.0` ed esegui la CI. La disponibilità del repository e il download HACS
-vanno verificati dopo la pubblicazione.
+Repository pubblicata e download HACS verificato sulla versione 0.1.0.
 La submission a Home Assistant Brands e l’inclusione nel catalogo HACS predefinito
 sono separate dall’installazione come repository personalizzata. La CI HACS
 ignora esclusivamente `brands` finché non viene completata tale submission.
