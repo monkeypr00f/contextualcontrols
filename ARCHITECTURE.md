@@ -1,7 +1,8 @@
-# Contextual Controls — Phase 1 architecture
+# Contextual Controls — Phase 1–2 architecture
 
-Decision record, 2026-09-24. Scope: Phase 1 only. No AI, presence modelling,
-weekday modelling or custom Lovelace card is implemented in this phase.
+Decision record, updated 2026-09-25. Phase 2 adds local presence, context,
+weekday, area and origin signals. AI and the custom Lovelace card remain outside
+this release.
 
 ## Verified baseline
 
@@ -35,7 +36,9 @@ coordinator -> sensor attributes -> future frontend.
 - `models.py`: immutable usage/candidate/result records, no HA dependency.
 - `history.py`: pure retention, validation and version migration functions.
 - `storage.py`: HA Store adapter, delayed writes and flush on unload.
-- `tracking.py`: conservative context classification and supported action map.
+- `tracking.py`: bounded context ancestry, conservative origin classification
+  and supported action map.
+- `context.py`: pure presence and opaque context-snapshot comparison helpers.
 - `eligibility.py`: inclusion/exclusion policy and ranking composition.
 - `scoring.py`: circular local-time similarity, frequency, recency, origin
   confidence and simple current-state plausibility; no Home Assistant imports.
@@ -46,7 +49,8 @@ coordinator -> sensor attributes -> future frontend.
 
 No Recorder dependency, SQL, monkeypatching, private HA attributes, network
 requests, or autonomous device control. State changes maintain eligibility and
-refresh current-state plausibility; they are **not** training events in Phase 1.
+refresh current-state plausibility and configured signals; they are not training
+events.
 
 ## Learning semantics and attribution
 
@@ -55,14 +59,21 @@ fires it after schema validation but **before** service execution: records
 represent command attempts, including possible failures, not verified effects.
 It also records scene/script/button usage even when no state transition occurs.
 
-Phase 1 accepts a direct context with `user_id` and without `parent_id` as an
-authenticated user command, confidence 0.9. This does not prove dashboard UI:
-REST clients using a user token can have the same context. Parent contexts are
-not inferred to be manual even if user_id is inherited. Unattributed and child
-commands can be opted into with lower confidence but are off by default.
-Assist without an authenticated direct user context is not reliably detected;
-automation versus script ancestry is deferred to Phase 2. UI labels describe
-these limits instead of presenting inaccurate origin toggles.
+An authenticated root context is a manual command with confidence 0.95. This
+does not prove dashboard UI: REST clients using a user token can have the same
+context. Parent contexts are not inferred to be manual even if `user_id` is
+inherited. The coordinator keeps a five-minute, 4,096-entry in-memory ancestry
+index populated by `automation_triggered`, `script_started`, and the
+`conversation.process` service event. Proven Assist, script and automation
+descendants receive confidence 0.85, 0.65 and 0.55. Everything else remains
+unknown (0.2–0.25). Manual and Assist are enabled by default; automation, script
+internals and unknown are opt-in. A directly pressed script is learned as the
+script control before its internal actions are classified as script ancestry.
+
+These component event names exist in Core 2026.9.3 but are not a generic public
+ancestry API. Failure to observe one degrades to unknown classification; it
+never upgrades an uncertain action to manual. The fallback uses only public
+Event and Context fields.
 
 The optional specific-user filter rejects unattributed records rather than
 silently mixing another profile. Stored nullable user IDs prepare for future
@@ -104,20 +115,28 @@ Recency slider 0 means no decay; 100 means rapid decay. Decay uses
 `exp(-age_days / tau)`, with `tau = 90 - 87 * slider / 100` days.
 Weighted evidence combines time, recency, origin confidence and a small
 current-state penalty when a simple on/off command already matches state.
+Phase 2 multiplies four bounded factors: exact weekday or workday/weekend,
+historical/current presence agreement, active presence area, and equality of
+configured context states. Mismatches reduce evidence but do not erase it.
+Context values remain opaque strings; the integration does not infer device
+semantics or normalize private state values.
 Score is `1 - exp(-evidence / 3)`, in [0,1], with stable entity-ID tie breaks.
 
 Cold start applies per entity before three records: recent controls (default),
 frequent controls, domain defaults (explicit opt-in), or pinned only. The
 confidence threshold still applies. Pins bypass statistical confidence and
 can occupy slots or be additional; duplicates are removed. No artificial fill.
-Reasons come from translation resources, with counts computed deterministically.
-Context/presence/area-affinity/weekday factors will be added in Phase 2, not
-simulated with invented data in Phase 1.
+Reasons come from translation resources and identify the strongest matching
+signal. If presence mode is `require_home`, no dynamic or pinned controls are
+exposed until at least one configured person/device tracker is `home`, or a
+configured binary sensor is `on`. Missing or unavailable presence fails closed.
 
 ## Persistence and lifecycle
 
-Store is private and entry-specific. Version 1 records are migrated to version
-2 with a nullable area_id and conservative default confidence. Unknown future
+Store is private and entry-specific. Version 1 records are migrated through
+version 2 to version 3, which adds presence and configured context snapshots.
+Old `user` records become `manual`; ambiguous old `child` records become
+`unknown`. Unknown future
 versions fail setup for retry instead of overwriting data. Invalid individual
 records are rejected and counted. Retention is 90 days so increasing the UI
 learning period can reuse already collected data. No pre-install history import.
@@ -135,8 +154,9 @@ deleting other history. A later removal from this list can reuse retained data.
 Initial setup: instance name then monitored entities (recommended domains are
 preselected). Only Statistical mode exists in this release; inert AI choices
 would misrepresent implemented functionality. Options: General, Entities,
-Learning, Dashboard, Advanced and Reset. Context and AI sections arrive with
-their implementations. Credentials, when added, belong to ConfigEntry.data.
+Learning, Context, Dashboard, Advanced and Reset. The Context section uses
+native entity selectors and validates require-home configuration. AI arrives
+with its implementation. Credentials, when added, belong to ConfigEntry.data.
 
 One integration directory is delivered by HACS. The Phase 4 card should be a
 separate HACS dashboard repository: integration and frontend have different
@@ -160,7 +180,8 @@ Pure pytest tests exercise real scoring and policy. Following the user's
 request to use their existing HA installation, no second HA runtime was
 installed locally. `tests/runtime_check.py` uses `IsolatedAsyncioTestCase`, also
 runnable by pytest, and the real 2026.9.3 libraries already in their container.
-It exercises config flow, options reload, service tracking, sensor state,
+It exercises config flow, Phase 1 ConfigEntry and Store migrations, options
+reload, origin tracking, presence gating, context snapshots, sensor state,
 Store persistence (including reading from a fresh Python process), and reset.
 Its temporary configuration and dummy services do not connect to the live HA
 process. No mock replacement of the HA APIs is used.

@@ -14,6 +14,8 @@ import unittest
 from pathlib import Path
 
 from homeassistant import config_entries, loader
+from homeassistant.components.automation import EVENT_AUTOMATION_TRIGGERED
+from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import area_registry, device_registry, entity_registry
 from homeassistant.setup import async_setup_component
@@ -43,12 +45,15 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         self.hass.states.async_set("light.test_contextual", "off")
         self.hass.states.async_set("light.excluded_contextual", "off")
         self.hass.states.async_set("scene.pin_contextual", "unknown")
+        self.hass.states.async_set("person.contextual_user", "not_home")
+        self.hass.states.async_set("input_boolean.contextual_night", "on")
         self.calls = []
 
         async def dummy(call):
             self.calls.append(call)
 
         self.hass.services.async_register("light", "turn_on", dummy)
+        self.hass.services.async_register("light", "turn_off", dummy)
 
     async def asyncTearDown(self):
         await self.hass.async_stop(force=True)
@@ -80,7 +85,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await history.async_load(dt_util.utcnow())
         self.assertEqual(len(history.records), 1)
         self.assertEqual(history.records[0].confidence, 0.2)
-        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 2)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 3)
         future = History(self.hass, "future")
         path = Path(future.store.path)
         await asyncio.to_thread(write, 999)
@@ -105,12 +110,38 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         entry = result["result"]
         await self.hass.async_block_till_done()
         self.assertEqual(entry.state, config_entries.ConfigEntryState.LOADED)
+        automation_context = Context()
+        self.hass.bus.async_fire(
+            EVENT_AUTOMATION_TRIGGERED,
+            {"entity_id": "automation.test", "name": "test"},
+            context=automation_context,
+        )
+        await self.hass.services.async_call(
+            "light",
+            "turn_on",
+            {"area_id": area.id},
+            context=automation_context,
+            blocking=True,
+        )
         for context in (Context(user_id="test_user", parent_id="parent"), Context()):
             await self.hass.services.async_call(
                 "light", "turn_on", {"area_id": area.id}, context=context, blocking=True
             )
         await self.hass.async_block_till_done()
         self.assertEqual(len(entry.runtime_data.history.records), 0)
+        assist_context = Context(user_id="test_user")
+        self.hass.bus.async_fire(
+            EVENT_CALL_SERVICE,
+            {"domain": "conversation", "service": "process", "service_data": {}},
+            context=assist_context,
+        )
+        await self.hass.services.async_call(
+            "light",
+            "turn_on",
+            {"area_id": area.id},
+            context=Context(user_id="test_user", parent_id=assist_context.id),
+            blocking=True,
+        )
         await self.hass.services.async_call(
             "light",
             "turn_on",
@@ -120,9 +151,10 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         )
         await self.hass.async_block_till_done()
         records = list(entry.runtime_data.history.records)
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].entity_id, registered.entity_id)
-        self.assertEqual(records[0].area_id, area.id)
+        self.assertEqual(len(records), 2)
+        self.assertEqual([record.source for record in records], ["assist", "manual"])
+        self.assertTrue(all(record.entity_id == registered.entity_id for record in records))
+        self.assertTrue(all(record.area_id == area.id for record in records))
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
 
     async def test_complete_lifecycle(self):
@@ -174,15 +206,48 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sensor.attributes["entities"][0]["entity_id"], "light.test_contextual")
         self.assertEqual(
             sensor.attributes["entities"][0]["reason"],
-            "Usato frequentemente in questa fascia oraria",
+            "Abitudine di questo tipo di giornata",
         )
         self.assertFalse(sensor.attributes["ai_used"])
+        # Context options reload the entry. Require-home gates the full output,
+        # then presence/context are captured on the next voluntary command.
+        flow = await self.hass.config_entries.options.async_init(entry.entry_id)
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "context"}
+        )
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"],
+            {
+                "presence_entities": ["person.contextual_user"],
+                "presence_mode": "require_home",
+                "context_entities": ["input_boolean.contextual_night"],
+            },
+        )
+        self.assertEqual(result["type"], "create_entry")
+        await self.hass.async_block_till_done()
+        coordinator = entry.runtime_data
+        await coordinator.async_refresh()
+        self.assertEqual(self.hass.states.get("sensor.contextual_controls").state, "0")
+        self.hass.states.async_set("person.contextual_user", "home")
+        await self.hass.async_block_till_done()
+        await coordinator.async_refresh()
+        self.assertEqual(self.hass.states.get("sensor.contextual_controls").state, "1")
+        await self.hass.services.async_call(
+            "light",
+            "turn_off",
+            {"entity_id": "light.test_contextual"},
+            blocking=True,
+            context=Context(user_id="test_user"),
+        )
+        record = coordinator.history.records[-1]
+        self.assertTrue(record.presence_home)
+        self.assertEqual(record.context_states, (("input_boolean.contextual_night", "on"),))
         # State changes alone are not training events.
         self.hass.states.async_set(
             "light.test_contextual", "on", context=Context(user_id="test_user")
         )
         await self.hass.async_block_till_done()
-        self.assertEqual(len(coordinator.history.records), 4)
+        self.assertEqual(len(coordinator.history.records), 5)
         # Unload flushes; a fresh coordinator restores the real Store file.
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
         # A new process proves persistence without reusing HA's Store cache.
@@ -207,9 +272,25 @@ asyncio.run(read())
             check=True,
             timeout=30,
         )
-        self.assertEqual(completed.stdout.strip(), "4")
+        self.assertEqual(completed.stdout.strip(), "5")
         self.assertTrue(await self.hass.config_entries.async_setup(entry.entry_id))
-        self.assertEqual(len(entry.runtime_data.history.records), 4)
+        self.assertEqual(len(entry.runtime_data.history.records), 5)
+        # A Phase 1 ConfigEntry maps old source names and gains Phase 2 defaults.
+        old_options = dict(entry.options)
+        for key in (
+            "consider_weekday",
+            "weekday_mode",
+            "presence_entities",
+            "presence_mode",
+            "context_entities",
+        ):
+            old_options.pop(key, None)
+        old_options["learn_sources"] = ["user"]
+        self.hass.config_entries.async_update_entry(entry, options=old_options, version=1)
+        self.assertTrue(await self.hass.config_entries.async_reload(entry.entry_id))
+        self.assertEqual(entry.version, 2)
+        self.assertEqual(entry.options["learn_sources"], ["manual"])
+        self.assertEqual(entry.options["presence_mode"], "signal")
         # Native options flow, automatic reload, pins and exclusion enforcement.
         flow = await self.hass.config_entries.options.async_init(entry.entry_id)
         self.assertEqual(flow["type"], "menu")
@@ -227,11 +308,11 @@ asyncio.run(read())
         self.assertEqual(result["type"], "create_entry")
         await self.hass.async_block_till_done()
         coordinator = entry.runtime_data
-        self.assertEqual(len(coordinator.history.records), 4)
+        self.assertEqual(len(coordinator.history.records), 5)
         entities = self.hass.states.get("sensor.contextual_controls").attributes["entities"]
         self.assertEqual(entities[0]["entity_id"], "scene.pin_contextual")
         self.assertNotIn("light.excluded_contextual", [row["entity_id"] for row in entities])
-        self.assertEqual(len(self.calls), 4)  # No autonomous service calls.
+        self.assertEqual(len(self.calls), 5)  # No autonomous service calls.
         from homeassistant.exceptions import ServiceValidationError
 
         with self.assertRaises(ServiceValidationError):
@@ -241,7 +322,7 @@ asyncio.run(read())
                 {"config_entry_id": entry.entry_id, "confirm": False},
                 blocking=True,
             )
-        self.assertEqual(len(coordinator.history.records), 4)
+        self.assertEqual(len(coordinator.history.records), 5)
         await self.hass.services.async_call(
             DOMAIN,
             "reset_learning",

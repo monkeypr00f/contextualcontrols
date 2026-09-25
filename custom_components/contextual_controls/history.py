@@ -13,12 +13,24 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
-    if version not in (1, 2):
+    if version not in (1, 2, 3):
         raise ValueError("Unsupported storage version")
-    if version == 2:
+    if version == 3:
         return data
+    rows = data.get("records", [])
+    if version == 1:
+        rows = [{"area_id": None, "confidence": 0.2, **row} for row in rows]
+    source_map = {"user": "manual", "child": "unknown", "unknown": "unknown"}
     return {
-        "records": [{"area_id": None, "confidence": 0.2, **row} for row in data.get("records", [])]
+        "records": [
+            {
+                **row,
+                "source": source_map.get(row.get("source"), row.get("source", "unknown")),
+                "presence_home": None,
+                "context_states": [],
+            }
+            for row in rows
+        ]
     }
 
 
@@ -37,14 +49,24 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                 or not ENTITY_ID.fullmatch(row["entity_id"])
                 or not math.isfinite(confidence)
                 or not 0 <= confidence <= 1
-                or row["source"] not in ("user", "child", "unknown")
+                or row["source"] not in ("manual", "assist", "automation", "script", "unknown")
                 or not isinstance(row["action"], str)
                 or row.get("user_id") is not None
                 and not isinstance(row["user_id"], str)
                 or row.get("area_id") is not None
                 and not isinstance(row["area_id"], str)
+                or row.get("presence_home") is not None
+                and not isinstance(row["presence_home"], bool)
             ):
                 raise ValueError("Invalid record")
+            context_states = row.get("context_states", [])
+            if not isinstance(context_states, list) or any(
+                not isinstance(item, list | tuple)
+                or len(item) != 2
+                or not all(isinstance(value, str) for value in item)
+                for item in context_states
+            ):
+                raise ValueError("Invalid context snapshot")
             records.append(
                 Usage(
                     timestamp,
@@ -54,6 +76,8 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                     row["action"],
                     confidence,
                     row.get("area_id"),
+                    row.get("presence_home"),
+                    tuple((item[0], item[1]) for item in context_states),
                 )
             )
         except KeyError, TypeError, ValueError, OverflowError:
@@ -72,6 +96,8 @@ def encode(records: Iterable[Usage]) -> dict[str, Any]:
                 "action": row.action,
                 "confidence": row.confidence,
                 "area_id": row.area_id,
+                "presence_home": row.presence_home,
+                "context_states": [list(item) for item in row.context_states],
             }
             for row in records
         ]

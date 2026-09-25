@@ -16,7 +16,17 @@ NOW = datetime(2026, 9, 24, tzinfo=UTC)
 
 
 def row(entity="light.a", user="alice", days=1):
-    return Usage(NOW - timedelta(days=days), entity, user, "user", "turn_on", 0.9)
+    return Usage(
+        NOW - timedelta(days=days),
+        entity,
+        user,
+        "manual",
+        "turn_on",
+        0.9,
+        "living",
+        True,
+        (("sensor.mode", "evening"),),
+    )
 
 
 def test_serialization_preserves_all_fields():
@@ -30,6 +40,7 @@ def test_v1_migration_and_future_rejection():
     del data["records"][0]["area_id"]
     migrated, errors = decode(migrate_payload(1, data))
     assert errors == 0 and migrated[0].confidence == 0.2 and migrated[0].area_id is None
+    assert migrated[0].source == "manual" and migrated[0].presence_home is None
     with pytest.raises(ValueError):
         migrate_payload(999, data)
 
@@ -45,6 +56,8 @@ def test_v1_migration_and_future_rejection():
         ("user_id", ["invalid"]),
         ("source", "invented"),
         ("area_id", {}),
+        ("presence_home", "yes"),
+        ("context_states", ["invalid"]),
     ],
 )
 def test_invalid_records_skipped(key, value):

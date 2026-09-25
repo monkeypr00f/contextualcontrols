@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 
+from .context import context_similarity
 from .eligibility import available
 from .models import Candidate, Ranked, ScoringSettings, Usage
 
@@ -40,6 +41,29 @@ def state_weight(action: str, state: str) -> float:
     return 0.5 if satisfied.get(action) == state else 1.0
 
 
+def weekday_weight(event: datetime, now: datetime, enabled: bool, mode: str) -> float:
+    """Prefer matching days while retaining useful cross-day evidence."""
+    if not enabled or mode == "none":
+        return 1.0
+    if mode == "exact":
+        return 1.05 if event.weekday() == now.weekday() else 0.6
+    event_weekend = event.weekday() >= 5
+    now_weekend = now.weekday() >= 5
+    return 1.05 if event_weekend == now_weekend else 0.65
+
+
+def presence_weight(historical: bool | None, current: bool | None, mode: str) -> float:
+    if mode == "ignore" or historical is None or current is None:
+        return 1.0
+    return 1.08 if historical == current else 0.65
+
+
+def area_weight(area_id: str | None, active_area_ids: tuple[str, ...]) -> float:
+    if not area_id or not active_area_ids:
+        return 1.0
+    return 1.1 if area_id in active_area_ids else 0.95
+
+
 def rank(
     candidates: Iterable[Candidate],
     records: Iterable[Usage],
@@ -66,6 +90,8 @@ def rank(
         if count < 3 and settings.cold_start == "pinned":
             continue
         evidence = times = recencies = confidences = states = 0.0
+        weekdays = presences = contexts = 0.0
+        area = area_weight(candidate.area_id, settings.active_area_ids)
         in_window = 0
         for event in events:
             local_time = event.timestamp.astimezone(now.tzinfo)
@@ -73,14 +99,34 @@ def rank(
             time = time_similarity(local_time, now, settings.time_window_minutes)
             recency = recency_decay(age, settings.recency_weight)
             state = state_weight(event.action, candidate.state)
-            evidence += time * recency * event.confidence * state
+            weekday = weekday_weight(
+                local_time, now, settings.consider_weekday, settings.weekday_mode
+            )
+            presence = presence_weight(
+                event.presence_home, settings.presence_home, settings.presence_mode
+            )
+            context = context_similarity(settings.context_states, event.context_states)
+            evidence += (
+                time * recency * event.confidence * state * weekday * presence * area * context
+            )
             times += time
             recencies += recency
             confidences += event.confidence
             states += state
+            weekdays += weekday
+            presences += presence
+            contexts += context
             in_window += clock_distance(local_time, now) <= settings.time_window_minutes
         score = 1 - math.exp(-evidence / 3)
         reason = "habit"
+        if events and settings.presence_mode != "ignore" and presences / count > 1:
+            reason = "presence_habit"
+        elif events and contexts / count > 1:
+            reason = "context_habit"
+        elif events and settings.consider_weekday and weekdays / count > 1:
+            reason = "weekday_habit"
+        elif events and area > 1:
+            reason = "area_habit"
         if count < 3 and events:
             if settings.cold_start == "recent":
                 latest = max(events, key=lambda event: event.timestamp)
@@ -106,6 +152,10 @@ def rank(
                 recency=recencies / max(1, count),
                 confidence=confidences / max(1, count),
                 current_state=states / max(1, count),
+                weekday=weekdays / max(1, count),
+                presence=presences / max(1, count),
+                area=area,
+                context=contexts / max(1, count),
             )
         )
     return sorted(result, key=lambda item: (-item.score, item.entity_id))

@@ -5,7 +5,12 @@ import pytest
 from custom_components.contextual_controls.const import DEFAULTS
 from custom_components.contextual_controls.eligibility import available, compose, eligible
 from custom_components.contextual_controls.models import Candidate, Ranked
-from custom_components.contextual_controls.tracking import Deduplicator, classify, supports_action
+from custom_components.contextual_controls.tracking import (
+    Deduplicator,
+    OriginTracker,
+    classify,
+    supports_action,
+)
 
 
 @pytest.fixture
@@ -79,9 +84,17 @@ def test_pins_truncated_and_unavailable_hidden(options):
 
 
 def test_classifier_never_assumes_parent_means_manual():
-    assert classify("alice", None) == ("user", 0.9)
-    assert classify("alice", "parent") == ("child", 0.3)
-    assert classify(None, None) == ("unknown", 0.2)
+    assert classify("ctx", "alice", None) == ("manual", 0.95)
+    assert classify("ctx", "alice", "parent") == ("unknown", 0.25)
+    assert classify("ctx", None, None) == ("unknown", 0.2)
+
+
+def test_observed_origin_takes_precedence_over_user_context():
+    origins = OriginTracker()
+    origins.observe("automation-context", "automation", 10)
+    origins.observe("assist-context", "assist", 11)
+    assert classify("automation-context", "alice", None, origins) == ("automation", 0.55)
+    assert classify("child", "alice", "assist-context", origins) == ("assist", 0.85)
 
 
 def test_service_filter():

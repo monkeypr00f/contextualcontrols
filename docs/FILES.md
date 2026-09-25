@@ -18,6 +18,7 @@ contextual-controls/
 │       ├── config.py
 │       ├── config_flow.py
 │       ├── const.py
+│       ├── context.py
 │       ├── coordinator.py
 │       ├── diagnostics.py
 │       ├── eligibility.py
@@ -36,6 +37,7 @@ contextual-controls/
 ├── docs
 │   ├── DELIVERY.md
 │   ├── FILES.md
+│   ├── PHASE2.md
 │   └── VERIFICATION.md
 ├── hacs.json
 ├── pyproject.toml
@@ -43,6 +45,7 @@ contextual-controls/
 └── tests
     ├── __init__.py
     ├── runtime_check.py
+    ├── test_context.py
     ├── test_history.py
     ├── test_package.py
     ├── test_policy.py
