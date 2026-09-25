@@ -206,7 +206,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sensor.attributes["entities"][0]["entity_id"], "light.test_contextual")
         self.assertEqual(
             sensor.attributes["entities"][0]["reason"],
-            "Usato frequentemente in questa fascia oraria",
+            "Abitudine di questo tipo di giornata",
         )
         self.assertFalse(sensor.attributes["ai_used"])
         # Context options reload the entry. Require-home gates the full output,
