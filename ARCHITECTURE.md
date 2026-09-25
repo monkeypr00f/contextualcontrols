@@ -162,7 +162,10 @@ with its implementation. Credentials, when added, belong to ConfigEntry.data.
 Version 0.3.0 bundles a dependency-free preview card inside the integration.
 The integration registers its immutable static route through
 `async_register_static_paths` and its module through `add_extra_js_url`, both
-present in the supported Core 2026.9.3 frontend/HTTP API. This makes the card
+present in the supported Core 2026.9.3 frontend/HTTP API. Frontend and HTTP are
+declared as ordered optional dependencies: the statistical backend remains
+usable in a headless runtime, while normal UI installations register the card.
+This makes the card
 discoverable in the visual picker without editing dashboard resources or YAML.
 The module URL includes the integration version to avoid stale browser caches.
 

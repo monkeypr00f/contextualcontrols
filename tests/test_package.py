@@ -34,7 +34,7 @@ def test_hacs_structure_and_local_requirements():
     assert manifest["config_flow"] is True
     assert manifest["requirements"] == []
     assert manifest["iot_class"] == "calculated"
-    assert manifest["dependencies"] == ["frontend"]
+    assert manifest["after_dependencies"] == ["frontend", "http"]
     assert (COMPONENT / "frontend" / "contextual-controls-card.js").exists()
     assert load(ROOT / "hacs.json")["homeassistant"] == "2026.9.3"
     assert (ROOT / "LICENSE").exists()

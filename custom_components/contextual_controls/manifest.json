@@ -6,8 +6,9 @@
   ],
   "config_flow": true,
   "documentation": "https://github.com/monkeypr00f/contextualcontrols",
-  "dependencies": [
-    "frontend"
+  "after_dependencies": [
+    "frontend",
+    "http"
   ],
   "integration_type": "service",
   "iot_class": "calculated",
