@@ -11,9 +11,10 @@ async def async_get_config_entry_diagnostics(hass, entry):
     sources = Counter(record.source for record in coordinator.history.records)
     return {
         "version": VERSION,
-        "mode": "statistical",
-        "ai_provider": "disabled",
-        "ai_status": "not_configured",
+        "mode": options["mode"],
+        "ai_provider": options["ai_provider"],
+        "ai_status": (coordinator.data or {}).get("ai_status", "disabled"),
+        "ai_credentials_configured": bool(entry.data.get("openai_api_key")),
         "eligible_entities_count": len(coordinator.eligible_ids),
         **coordinator.history.counts(),
         "last_evaluation_date": (coordinator.data or {}).get("last_update", "")[:10],
@@ -33,6 +34,18 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "consider_weekday",
                 "weekday_mode",
                 "presence_mode",
+                "candidate_pool_size",
+                "ai_min_refresh_minutes",
+                "ai_timeout_seconds",
+                "ai_temperature",
+                "ai_share_entity_id",
+                "ai_share_friendly_name",
+                "ai_share_current_state",
+                "ai_share_area",
+                "ai_share_usage_statistics",
+                "ai_share_exact_timestamps",
+                "ai_share_presence_information",
+                "ai_share_context_entities",
             )
         },
     }

@@ -15,6 +15,7 @@ contextual-controls/
 ├── custom_components
 │   └── contextual_controls
 │       ├── __init__.py
+│       ├── ai.py
 │       ├── config.py
 │       ├── config_flow.py
 │       ├── const.py
@@ -41,6 +42,7 @@ contextual-controls/
 │   ├── DELIVERY.md
 │   ├── FILES.md
 │   ├── PHASE2.md
+│   ├── PHASE3.md
 │   ├── UI_PREVIEW.md
 │   └── VERIFICATION.md
 ├── hacs.json
@@ -49,6 +51,7 @@ contextual-controls/
 └── tests
     ├── __init__.py
     ├── runtime_check.py
+    ├── test_ai.py
     ├── test_context.py
     ├── test_history.py
     ├── test_package.py

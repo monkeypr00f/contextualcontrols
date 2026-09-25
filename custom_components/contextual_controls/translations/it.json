@@ -5,9 +5,10 @@
       "user": {
         "title": "Contextual Controls",
         "data": {
-          "name": "Nome istanza"
+          "name": "Nome istanza",
+          "mode": "Modalità"
         },
-        "description": "Impara localmente dai tuoi comandi e suggerisce controlli. Non comanda mai i dispositivi in autonomia. Phase 1 usa solo il ranking statistico."
+        "description": "Scegli un nome e la modalità. Il ranking locale funziona sempre; l’AI viene configurata dopo e può solo riordinare i candidati."
       },
       "entities": {
         "title": "Scegli i controlli",
@@ -34,17 +35,20 @@
           "context": "Contesto",
           "dashboard": "Dashboard",
           "advanced": "Avanzate / Debug",
+          "ai": "AI opzionale",
           "reset": "Reset apprendimento"
         }
       },
       "general": {
         "title": "Generale",
         "data": {
+          "mode": "Modalità",
           "suggestion_count": "Numero di suggerimenti",
           "refresh_minutes": "Aggiornamento periodico"
         },
         "data_description": {
-          "refresh_minutes": "Gli eventi rilevanti aggiornano sempre con debounce. 15 minuti garantisce anche una valutazione periodica; solo eventi non aggiorna al solo passaggio del tempo."
+          "refresh_minutes": "Gli eventi rilevanti aggiornano sempre con debounce. 15 minuti garantisce anche una valutazione periodica; solo eventi non aggiorna al solo passaggio del tempo.",
+          "mode": "Statistical usa solo il ranking locale. Hybrid integra il riordino AI quando disponibile. AI assisted gli assegna più peso, senza superare i filtri locali."
         }
       },
       "entities": {
@@ -137,13 +141,66 @@
           "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
           "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
         }
+      },
+      "ai": {
+        "title": "AI opzionale",
+        "description": "L’AI può esclusivamente riordinare candidati già ammessi localmente. In caso di errore viene usato il ranking statistico.",
+        "data": {
+          "ai_provider": "Provider",
+          "candidate_pool_size": "Dimensione shortlist",
+          "ai_min_refresh_minutes": "Intervallo minimo AI",
+          "ai_share_entity_id": "Invia entity_id",
+          "ai_share_friendly_name": "Invia nomi amichevoli",
+          "ai_share_current_state": "Invia stato corrente",
+          "ai_share_area": "Invia area",
+          "ai_share_usage_statistics": "Invia statistiche di utilizzo",
+          "ai_share_exact_timestamps": "Invia orario esatto",
+          "ai_share_presence_information": "Invia informazioni di presenza",
+          "ai_share_context_entities": "Invia entità contestuali"
+        },
+        "data_description": {
+          "ai_provider": "Disabled mantiene tutto locale. Ollama e OpenAI-compatible ricevono solo la shortlist autorizzata.",
+          "candidate_pool_size": "Numero massimo di candidati statistici inviati al provider, da 6 a 30.",
+          "ai_min_refresh_minutes": "Le chiamate con contesto cambiato vengono limitate; il contesto identico usa la cache.",
+          "ai_share_entity_id": "Se disattivato usa token anonimi come candidate_1.",
+          "ai_share_exact_timestamps": "Se disattivato viene inviata solo l’ora corrente senza minuti.",
+          "ai_share_context_entities": "Invia solo le entità contestuali selezionate, mai l’intero registro stati."
+        }
+      },
+      "ai_ollama": {
+        "title": "Ollama",
+        "data": {
+          "ollama_url": "URL Ollama",
+          "ollama_model": "Modello",
+          "ai_timeout_seconds": "Timeout (secondi)",
+          "ai_temperature": "Temperatura"
+        },
+        "data_description": {
+          "ollama_url": "Endpoint locale, ad esempio http://localhost:11434. Nessuna chiave API.",
+          "ai_temperature": "0.1 è consigliato per un ordinamento stabile."
+        }
+      },
+      "ai_openai_compatible": {
+        "title": "OpenAI-compatible",
+        "data": {
+          "openai_endpoint": "Endpoint",
+          "openai_model": "Modello",
+          "ai_timeout_seconds": "Timeout (secondi)",
+          "ai_temperature": "Temperatura",
+          "api_key": "API key"
+        },
+        "data_description": {
+          "openai_endpoint": "URL base o URL completo /v1/chat/completions.",
+          "api_key": "Lascia vuoto per conservare la chiave esistente. Viene salvata nei dati protetti della ConfigEntry."
+        }
       }
     },
     "error": {
       "unknown_user": "ID utente non trovato.",
       "confirmation_required": "Conferma il reset prima di continuare.",
       "entry_not_loaded": "Questa istanza deve essere caricata.",
-      "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa."
+      "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa.",
+      "api_key_required": "Inserisci una API key."
     }
   },
   "entity": {
@@ -162,7 +219,8 @@
               "weekday_habit": "Abitudine di questo tipo di giornata",
               "presence_habit": "Usato spesso con la presenza attuale",
               "context_habit": "Usato spesso nel contesto attuale della casa",
-              "area_habit": "Rilevante per l’area attualmente occupata"
+              "area_habit": "Rilevante per l’area attualmente occupata",
+              "ai_selected": "Selezionato dal riordino AI"
             }
           }
         }
@@ -307,6 +365,20 @@
         "vacuum": "vacuum",
         "select": "select",
         "number": "number"
+      }
+    },
+    "mode": {
+      "options": {
+        "hybrid": "Smart / Hybrid",
+        "statistical": "Solo statistica",
+        "ai_assisted": "Assistita da AI"
+      }
+    },
+    "ai_provider": {
+      "options": {
+        "disabled": "Disabilitato",
+        "ollama": "Ollama",
+        "openai_compatible": "OpenAI-compatible"
       }
     }
   }

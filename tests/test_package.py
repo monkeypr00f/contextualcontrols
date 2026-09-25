@@ -38,6 +38,13 @@ def test_hacs_structure_and_local_requirements():
     assert (COMPONENT / "frontend" / "contextual-controls-card.js").exists()
     assert load(ROOT / "hacs.json")["homeassistant"] == "2026.9.3"
     assert (ROOT / "LICENSE").exists()
+    from custom_components.contextual_controls.const import DEFAULTS, VERSION
+
+    assert manifest["version"] == VERSION == "0.4.0"
+    assert DEFAULTS["ai_provider"] == "disabled"
+    assert DEFAULTS["ai_share_exact_timestamps"] is False
+    assert DEFAULTS["ai_share_presence_information"] is False
+    assert "openai_api_key" not in DEFAULTS
 
 
 def test_reasons_are_translated():
@@ -53,6 +60,7 @@ def test_reasons_are_translated():
         "presence_habit",
         "context_habit",
         "area_habit",
+        "ai_selected",
     }
 
 

@@ -5,9 +5,10 @@
       "user": {
         "title": "Contextual Controls",
         "data": {
-          "name": "Instance name"
+          "name": "Instance name",
+          "mode": "Mode"
         },
-        "description": "Learns locally from your commands and suggests controls. It never controls devices automatically. Phase 1 uses statistical ranking only."
+        "description": "Choose a name and mode. Local ranking always works; AI is configured later and can only reorder candidates."
       },
       "entities": {
         "title": "Choose controls",
@@ -34,17 +35,20 @@
           "context": "Context",
           "dashboard": "Dashboard",
           "advanced": "Advanced / Debug",
+          "ai": "Optional AI",
           "reset": "Reset learning"
         }
       },
       "general": {
         "title": "General",
         "data": {
+          "mode": "Mode",
           "suggestion_count": "Number of suggestions",
           "refresh_minutes": "Periodic refresh"
         },
         "data_description": {
-          "refresh_minutes": "Relevant events always refresh with debounce. 15 minutes also guarantees a periodic evaluation; events-only does not update merely because the clock changed."
+          "refresh_minutes": "Relevant events always refresh with debounce. 15 minutes also guarantees a periodic evaluation; events-only does not update merely because the clock changed.",
+          "mode": "Statistical uses only local ranking. Hybrid blends AI ordering when available. AI assisted gives it more weight without bypassing local filters."
         }
       },
       "entities": {
@@ -137,13 +141,66 @@
           "user_id": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles.",
           "confirm": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
         }
+      },
+      "ai": {
+        "title": "Optional AI",
+        "description": "AI can only reorder candidates already allowed locally. Statistical ranking is used on every failure.",
+        "data": {
+          "ai_provider": "Provider",
+          "candidate_pool_size": "Candidate pool size",
+          "ai_min_refresh_minutes": "Minimum AI refresh interval",
+          "ai_share_entity_id": "Share entity IDs",
+          "ai_share_friendly_name": "Share friendly names",
+          "ai_share_current_state": "Share current state",
+          "ai_share_area": "Share area",
+          "ai_share_usage_statistics": "Share usage statistics",
+          "ai_share_exact_timestamps": "Share exact timestamps",
+          "ai_share_presence_information": "Share presence information",
+          "ai_share_context_entities": "Share context entities"
+        },
+        "data_description": {
+          "ai_provider": "Disabled keeps everything local. Ollama and OpenAI-compatible receive only the authorized shortlist.",
+          "candidate_pool_size": "Maximum statistical candidates sent to the provider, from 6 to 30.",
+          "ai_min_refresh_minutes": "Calls for changed context are rate-limited; identical context uses the cache.",
+          "ai_share_entity_id": "When disabled, anonymous tokens such as candidate_1 are used.",
+          "ai_share_exact_timestamps": "When disabled, only the current hour is sent without minutes.",
+          "ai_share_context_entities": "Shares only selected context entities, never the complete state registry."
+        }
+      },
+      "ai_ollama": {
+        "title": "Ollama",
+        "data": {
+          "ollama_url": "URL Ollama",
+          "ollama_model": "Model",
+          "ai_timeout_seconds": "Timeout (seconds)",
+          "ai_temperature": "Temperature"
+        },
+        "data_description": {
+          "ollama_url": "Local endpoint, for example http://localhost:11434. No API key is used.",
+          "ai_temperature": "0.1 is recommended for stable ordering."
+        }
+      },
+      "ai_openai_compatible": {
+        "title": "OpenAI-compatible",
+        "data": {
+          "openai_endpoint": "Endpoint",
+          "openai_model": "Model",
+          "ai_timeout_seconds": "Timeout (seconds)",
+          "ai_temperature": "Temperature",
+          "api_key": "API key"
+        },
+        "data_description": {
+          "openai_endpoint": "Base URL or complete /v1/chat/completions URL.",
+          "api_key": "Leave empty to keep the existing key. It is stored in ConfigEntry data."
+        }
       }
     },
     "error": {
       "unknown_user": "Unknown user ID.",
       "confirmation_required": "Confirm the reset before continuing.",
-      "entry_not_loaded": "This integration instance must be loaded."
-      ,"presence_required": "Choose at least one presence entity for require-home mode."
+      "entry_not_loaded": "This integration instance must be loaded.",
+      "presence_required": "Choose at least one presence entity for require-home mode.",
+      "api_key_required": "Enter an API key."
     }
   },
   "entity": {
@@ -158,11 +215,12 @@
               "habit": "Frequently used around this time",
               "recent": "Recently used control",
               "frequent": "Frequently used control",
-              "domain_default": "Selected by the configured domain defaults"
-              ,"weekday_habit": "Habit for this day pattern"
-              ,"presence_habit": "Frequently used with the current presence"
-              ,"context_habit": "Frequently used in the current home context"
-              ,"area_habit": "Relevant to the currently occupied area"
+              "domain_default": "Selected by the configured domain defaults",
+              "weekday_habit": "Habit for this day pattern",
+              "presence_habit": "Frequently used with the current presence",
+              "context_habit": "Frequently used in the current home context",
+              "area_habit": "Relevant to the currently occupied area",
+              "ai_selected": "Selected by AI reranking"
             }
           }
         }
@@ -307,6 +365,20 @@
         "vacuum": "vacuum",
         "select": "select",
         "number": "number"
+      }
+    },
+    "mode": {
+      "options": {
+        "hybrid": "Smart / Hybrid",
+        "statistical": "Statistical only",
+        "ai_assisted": "AI assisted"
+      }
+    },
+    "ai_provider": {
+      "options": {
+        "disabled": "Disabled",
+        "ollama": "Ollama",
+        "openai_compatible": "OpenAI-compatible"
       }
     }
   }
