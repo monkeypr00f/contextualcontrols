@@ -1,9 +1,9 @@
-# Contextual Controls — Phase 1–2 and UI preview architecture
+# Contextual Controls — Phase 1–3 and UI preview architecture
 
 Decision record, updated 2026-09-25. Phase 2 adds local presence, context,
 weekday, area and origin signals. Version 0.3.0 adds an early Lovelace card so
-the ranked result can be evaluated before the complete Phase 4. AI remains
-outside this release.
+the ranked result can be evaluated before the complete Phase 4. Phase 3 adds
+optional shortlist-only AI reranking while retaining the statistical path.
 
 ## Verified baseline
 
@@ -183,13 +183,42 @@ bundled card is deliberately an evaluation slice. Once its interaction and
 layout are accepted, the same custom element can move to a plugin repository;
 the sensor contract and saved dashboard card configuration stay unchanged.
 
-The current LLM API exposes tools **to** models; it is not a generic safe
-completion/reranking API. Conversation can execute intents, and prompt wording
-alone cannot prohibit actions. Therefore Phase 3 will introduce a provider
-interface with disabled/local Ollama implementations and strict shortlist-only
-JSON validation. Generic conversation-agent reranking remains disabled unless
-a public API can guarantee no tool execution. Cache, privacy allowlists and
-fallback are Phase 3 acceptance tests, not fabricated Phase 1 tests.
+## Phase 3 AI boundary
+
+The current Home Assistant LLM API exposes tools **to** models; it is not a
+generic completion/reranking API. The public Conversation API may execute
+intents and its agent interface does not offer a provider-independent guarantee
+that tools are disabled. Prompt wording alone cannot provide that guarantee.
+For this reason the Home Assistant conversation-agent choice is documented as
+unsupported in Phase 3 rather than presented as a working but unsafe option.
+
+Phase 3 uses a small provider protocol with three implementations: disabled,
+Ollama `/api/chat`, and an OpenAI-compatible `/v1/chat/completions` endpoint.
+HTTP uses Home Assistant's shared async client session and `asyncio.timeout`;
+there is no blocking I/O and no provider SDK dependency. The API key is kept in
+`ConfigEntry.data`, never in options, diagnostics, prompts or logs.
+
+The deterministic scorer remains authoritative for eligibility, safety,
+confidence threshold and candidate generation. At most the configured top
+6–30 statistical candidates are serialized. The provider returns only an
+ordered JSON array of entity IDs. Parsing rejects malformed structures,
+deduplicates IDs, drops IDs outside the shortlist and appends omitted valid
+candidates in statistical order. AI output can therefore change order only;
+it cannot introduce an entity, bypass exclusions, fill empty slots or call a
+Home Assistant service.
+
+Hybrid mode blends statistical and AI rank positions. AI-assisted mode gives
+the model rank more weight, while retaining the same local candidate and output
+boundaries. Disabled or failed AI always returns the original statistical
+ranking. The sensor stays available and reports `ai_used`, `ai_provider`,
+`ai_error` and the last successful AI update.
+
+Privacy is an explicit allowlist for entity IDs, friendly names, current state,
+area, aggregate usage statistics, exact current time, presence and configured
+context entities. Raw history and user IDs are never serialized. Cache keys are
+derived from the authorized prompt payload. Identical context reuses the last
+result; changed context is rate-limited by the configured 5–120 minute minimum
+AI interval and uses the statistical fallback while throttled.
 
 ## Verification policy
 
