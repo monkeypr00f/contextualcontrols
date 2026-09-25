@@ -94,6 +94,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         provider_name = self.options["ai_provider"]
         if provider_name == "disabled":
             return
+        self._ai_status = "ready"
+
+    def _ensure_ai_manager(self) -> None:
+        if self._ai_manager is not None or self.options["ai_provider"] == "disabled":
+            return
+        provider_name = self.options["ai_provider"]
         session = async_get_clientsession(self.hass)
         common = (
             session,
@@ -107,7 +113,6 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             provider = OpenAICompatibleProvider(*common, self.entry.data.get("openai_api_key", ""))
         self._ai_manager = AIManager(provider, self.options["ai_min_refresh_minutes"])
-        self._ai_status = "ready"
 
     @callback
     def _rebuild(self) -> None:
@@ -300,7 +305,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ranked = await self.hass.async_add_executor_job(
                 rank, tuple(candidates.values()), tuple(self.history.records), now, settings
             )
-            if self._ai_manager is not None and self.options["mode"] != "statistical" and ranked:
+            if (
+                self.options["ai_provider"] != "disabled"
+                and self.options["mode"] != "statistical"
+                and ranked
+            ):
+                self._ensure_ai_manager()
+                assert self._ai_manager is not None
                 pool_size = int(self.options["candidate_pool_size"])
                 shortlist = ranked[:pool_size]
                 area_registry = ar.async_get(self.hass)
