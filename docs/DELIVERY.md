@@ -1,16 +1,19 @@
-# Consegna Phase 1–2
+# Consegna Phase 1–2 e anteprima UI
 
-La versione 0.2.0 è installata nell’istanza Home Assistant Core 2026.9.3 e
+La versione 0.3.0 è installata nell’istanza Home Assistant Core 2026.9.3 e
 configurabile interamente dalla UI. `sensor.contextual_controls` è operativo,
 ha conservato i dati della Phase 1 dopo aggiornamento e riavvio e restituisce
-tre suggerimenti appresi da utilizzi autentici. Nessun dispositivo è stato
-azionato durante la verifica della Phase 2.
+sei suggerimenti appresi da utilizzi autentici. La card di anteprima li rende
+utilizzabili direttamente nella vista **Interno**. Nessun dispositivo è stato
+azionato durante le verifiche.
 
 Il proprietario e la repository sono ora definiti:
 [`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
-Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS mostra
-`Versione scaricata v0.2.0`; il download e il riavvio sono riusciti. La Phase 3
-(AI) e la Phase 4 (card Lovelace) non sono state implementate.
+Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS ha
+installato la release v0.3.0 e il riavvio è riuscito. La Phase 3 (AI) non è
+stata implementata. Della Phase 4 è disponibile una prima card Tiles completa
+di editor visuale; layout Compact/Chips e pacchetto HACS Dashboard separato
+restano per la fase completa.
 
 ## Materiale
 
@@ -19,6 +22,7 @@ Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS mostra
 - [Decisioni architetturali e fonti ufficiali](../ARCHITECTURE.md)
 - [Verifica storica della Phase 1](VERIFICATION.md)
 - [Funzioni, verifica e limiti della Phase 2](PHASE2.md)
+- [Funzioni e verifica dell’anteprima UI](UI_PREVIEW.md)
 - [Installazione manuale, HACS e configurazione](../README.md)
 - [Test del motore](../tests/test_scoring.py)
 - [Test del ciclo Home Assistant](../tests/runtime_check.py)
@@ -35,7 +39,8 @@ Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS mostra
 5. ConfigFlow semplice e OptionsFlowWithReload a sezioni, tradotti EN/IT.
 6. Nessuna chiamata AI e nessun comando ai dispositivi. Conversation non è
    considerata un’API sicura per il solo reranking.
-7. Futura card distribuita come plugin HACS Dashboard separato.
+7. Card di anteprima inclusa nella Integration per la prova reale; la release
+   completa verrà distribuita come plugin HACS Dashboard separato.
 
 ## Esempio realmente osservato dopo l’aggiornamento
 
@@ -85,6 +90,12 @@ I log HA filtrati non riportano problemi per `contextual_controls`.
 Phase 2: [pull request #1](https://github.com/monkeypr00f/contextualcontrols/pull/1),
 [release v0.2.0](https://github.com/monkeypr00f/contextualcontrols/releases/tag/v0.2.0)
 e [CI del merge](https://github.com/monkeypr00f/contextualcontrols/actions/runs/36158028359).
+
+Anteprima UI: [pull request #2](https://github.com/monkeypr00f/contextualcontrols/pull/2)
+e [release v0.3.0](https://github.com/monkeypr00f/contextualcontrols/releases/tag/v0.3.0).
+La card è comparsa nel picker, l’editor visuale italiano ha salvato la
+configurazione e la dashboard ha mostrato i sei suggerimenti, inclusi stato e
+motivazione, senza interventi YAML.
 
 I checkpoint Git separano architettura, motore statistico, adattatori HA e
 verifica/documentazione. La history si consulta con `git log --oneline`.

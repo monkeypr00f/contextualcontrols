@@ -29,6 +29,18 @@ frontend Home Assistant. Il default punta a `sensor.contextual_controls`.
 L’integrazione serve e registra automaticamente il modulo, quindi non servono
 risorse Lovelace o YAML aggiuntivi.
 
+## Verifica sull’istanza reale
+
+La release 0.3.0 è stata installata tramite HACS su Home Assistant Core
+2026.9.3. Dopo il riavvio, l’integrazione risulta caricata e il modulo della
+card è raggiungibile dall’URL registrato dall’integrazione.
+
+La card compare nel picker sotto **Schede della comunità**, apre il proprio
+editor visuale in italiano e usa automaticamente `sensor.contextual_controls`.
+È stata aggiunta alla vista **Interno** con stato, motivazione e titolo dinamico
+attivi. La prova ha mostrato sei controlli reali ordinati dal sensore con il
+titolo **Prima di dormire**. Nessun tile è stato premuto durante la verifica.
+
 ## Scelta di distribuzione
 
 La card è inclusa temporaneamente nella repository Integration per provarla
