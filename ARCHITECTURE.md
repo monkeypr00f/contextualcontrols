@@ -1,4 +1,4 @@
-# Contextual Controls — Phase 1–3 and UI preview architecture
+# Contextual Controls — Phase 1–4 architecture
 
 Decision record, updated 2026-09-25. Phase 2 adds local presence, context,
 weekday, area and origin signals. Version 0.3.0 adds an early Lovelace card so
@@ -32,7 +32,7 @@ Sources:
 
 `call_service` -> origin classifier -> eligible-target intersection -> usage
 records -> local Store -> deterministic scorer -> ranked/pinned selection ->
-coordinator -> sensor attributes -> future frontend.
+coordinator -> sensor attributes -> separate HACS Dashboard card.
 
 - `models.py`: immutable usage/candidate/result records, no HA dependency.
 - `history.py`: pure retention, validation and version migration functions.
@@ -150,38 +150,20 @@ the explicit boolean is enforced server-side. Ignoring learning is an options
 list, separate from hiding controls; it also suppresses old evidence without
 deleting other history. A later removal from this list can reuse retained data.
 
-## UI preview, distribution and future phases
+## Frontend distribution
 
-Initial setup: instance name then monitored entities (recommended domains are
-preselected). Only Statistical mode exists in this release; inert AI choices
-would misrepresent implemented functionality. Options: General, Entities,
-Learning, Context, Dashboard, Advanced and Reset. The Context section uses
-native entity selectors and validates require-home configuration. AI arrives
-with its implementation. Credentials, when added, belong to ConfigEntry.data.
+The card is a separate HACS Dashboard repository:
+`https://github.com/monkeypr00f/contextual-controls-card`. This follows the HACS
+plugin contract (`dist/contextual-controls-card.js`) and lets frontend updates
+arrive without a Home Assistant restart. Integration 0.5.0 no longer registers
+HTTP static paths or extra JavaScript modules.
 
-Version 0.3.0 bundles a dependency-free preview card inside the integration.
-The integration registers its immutable static route through
-`async_register_static_paths` and its module through `add_extra_js_url`, both
-present in the supported Core 2026.9.3 frontend/HTTP API. Frontend and HTTP are
-declared as ordered optional dependencies: the statistical backend remains
-usable in a headless runtime, while normal UI installations register the card.
-This makes the card
-discoverable in the visual picker without editing dashboard resources or YAML.
-The module URL includes the integration version to avoid stale browser caches.
-
-The card reads only the ranked sensor and the states of the returned entities.
-It renders at most 12 tiles and does not inspect the complete state registry.
-An action occurs only after a user tap. Automatic tap toggles simple domains,
-activates scene/script/button with their domain service, and opens more-info for
-climate, cover, media player, lock and other controls without a safe one-tap
-meaning. Hold always opens more-info. Text from entity states is assigned with
-`textContent`, not injected as HTML.
-
-HACS still recommends a separate Dashboard repository for the definitive Phase
-4 distribution because Integration and Dashboard are different categories. The
-bundled card is deliberately an evaluation slice. Once its interaction and
-layout are accepted, the same custom element can move to a plugin repository;
-the sensor contract and saved dashboard card configuration stay unchanged.
+The public contract remains `type: custom:contextual-controls-card` plus the
+ranked `entities` sensor attribute, so saved dashboard configuration survives
+the split. Tiles, Compact and Chips are implemented without importing private
+Home Assistant frontend modules. The visual editor uses the public
+`getConfigForm` API. All service calls originate from a tap; complex and
+sensitive domains use the public `hass-more-info` event.
 
 ## Phase 3 AI boundary
 

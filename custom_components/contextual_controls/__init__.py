@@ -28,13 +28,6 @@ async def async_setup(hass, config):
     from homeassistant.exceptions import ServiceValidationError
     from homeassistant.helpers import config_validation as cv
 
-    # A normal UI-configured Home Assistant already has frontend and HTTP.
-    # Keep the statistical backend usable in headless/test runtimes as well.
-    if "frontend" in hass.config.components and hasattr(hass, "http"):
-        from .frontend import async_register_frontend
-
-        await async_register_frontend(hass)
-
     async def reset_learning(call):
         entry = hass.config_entries.async_get_entry(call.data["config_entry_id"])
         if entry is None or entry.domain != DOMAIN or not getattr(entry, "runtime_data", None):
