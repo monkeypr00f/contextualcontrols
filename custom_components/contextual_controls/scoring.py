@@ -131,7 +131,12 @@ def rank(
             if settings.cold_start == "recent":
                 latest = max(events, key=lambda event: event.timestamp)
                 age = (now.timestamp() - latest.timestamp.timestamp()) / 86400
-                score = max(score, 0.45 * latest.confidence * math.exp(-age / 3))
+                latest_local = latest.timestamp.astimezone(now.tzinfo)
+                recent_time = time_similarity(latest_local, now, settings.time_window_minutes)
+                score = max(
+                    score,
+                    0.45 * latest.confidence * math.exp(-age / 3) * recent_time,
+                )
                 reason = "recent"
             elif settings.cold_start == "frequent":
                 score = max(score, 1 - math.exp(-confidences / 3))
