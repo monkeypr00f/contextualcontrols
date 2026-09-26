@@ -65,8 +65,11 @@ class QuickAccessSlotSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry, slot: int) -> None:
         super().__init__(coordinator)
         self._slot = slot
+        # This is a deliberately stable public bridge consumed by Shortcuts and
+        # Apple Watch wrappers. Let the entity registry resolve a suffix only if
+        # another integration instance already owns the canonical id.
+        self.entity_id = f"sensor.contextual_control_{slot}"
         self._attr_unique_id = f"{entry.entry_id}_quick_access_{slot}"
-        self._attr_suggested_object_id = f"contextual_control_{slot}"
         self._attr_translation_placeholders = {"slot": str(slot)}
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
