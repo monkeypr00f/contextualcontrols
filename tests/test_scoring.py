@@ -169,6 +169,35 @@ def test_recent_default_bootstraps_one_command_but_pins_only_does_not():
     assert not rank(candidate, [use(days=0)], NOW, replace(SETTINGS, cold_start="pinned"))
 
 
+def test_recent_cold_start_does_not_surface_night_control_in_morning():
+    morning = NOW.replace(hour=8, minute=10)
+    candidate = [Candidate("script.goodnight", "off")]
+    night_use = Usage(
+        (morning - timedelta(days=1)).replace(hour=23, minute=0),
+        "script.goodnight",
+        "alice",
+        "manual",
+        "turn_on",
+        0.95,
+    )
+    assert not rank(candidate, [night_use], morning, ScoringSettings())
+
+
+def test_recent_cold_start_keeps_control_used_near_current_time():
+    morning = NOW.replace(hour=8, minute=10)
+    candidate = [Candidate("light.kitchen", "off")]
+    morning_use = Usage(
+        (morning - timedelta(days=1)).replace(hour=8, minute=0),
+        "light.kitchen",
+        "alice",
+        "manual",
+        "turn_on",
+        0.95,
+    )
+    result = rank(candidate, [morning_use], morning, ScoringSettings())
+    assert result and result[0].reason_key == "recent"
+
+
 def test_domain_defaults_require_explicit_strategy_and_threshold():
     candidates = [Candidate("light.bed", "on")]
     assert rank(candidates, [], NOW, replace(SETTINGS, cold_start="domains"))

@@ -41,5 +41,3 @@ jobs:
         with:
           category: integration
           comment: false
-          # Custom repositories work before default-store/brands submission.
-          ignore: brands
