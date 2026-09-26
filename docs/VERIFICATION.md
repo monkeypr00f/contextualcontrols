@@ -98,7 +98,15 @@ Nessun token o password è salvato nella repository.
   apprende automaticamente dai semplici cambiamenti di stato.
 - Gli eventi sono tentativi di comando; non certificano l’effetto sul dispositivo.
 - Presenza, contesto, weekday/weekend e classificazione avanzata sono Phase 2.
-- AI, fallback provider e relativi test sono Phase 3.
+- AI, fallback provider e relativi test sono coperti nella Phase 3.
 - Card dinamica ed editor visuale sono Phase 4. Il sensore da solo non genera tile.
 - La conservazione è limitata a 90 giorni e 50.000 eventi per istanza.
 - HACS è verificato come repository personalizzata; Brands e catalogo predefinito sono submission separate.
+
+
+## Phase 4
+
+La repository Dashboard separata passa `node --check`, 4 test Node e HACS
+validation. La release v1.0.0 è stata installata su Home Assistant tramite HACS.
+L’integrazione 0.5.0 mantiene invariato il contratto del sensore e rimuove la
+registrazione frontend incorporata.

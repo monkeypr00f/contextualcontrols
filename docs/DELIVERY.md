@@ -1,4 +1,4 @@
-# Consegna Phase 1–2 e anteprima UI
+# Consegna Phase 1–4
 
 La versione 0.3.0 è installata nell’istanza Home Assistant Core 2026.9.3 e
 configurabile interamente dalla UI. `sensor.contextual_controls` è operativo,
@@ -10,9 +10,7 @@ azionato durante le verifiche.
 Il proprietario e la repository sono ora definiti:
 [`monkeypr00f/contextualcontrols`](https://github.com/monkeypr00f/contextualcontrols).
 Codice pubblicato, CI passata e repository riconosciuta da HACS. HACS ha
-installato la release v0.3.0 e il riavvio è riuscito. La Phase 3 è pubblicata
-come v0.4.0 ma, per richiesta del proprietario, non è stata installata
-nell’istanza reale. Della Phase 4 è disponibile una prima card Tiles completa
+installato la release v0.3.0 e il riavvio è riuscito. La Phase 3 è stata pubblicata come v0.4.0 e installata nell’istanza reale il 26 settembre 2026. Della Phase 4 è disponibile una prima card Tiles completa
 di editor visuale; layout Compact/Chips e pacchetto HACS Dashboard separato
 restano per la fase completa.
 
@@ -105,3 +103,12 @@ copiato nell’istanza domestica e HACS non è stato aggiornato.
 
 I checkpoint Git separano architettura, motore statistico, adattatori HA e
 verifica/documentazione. La history si consulta con `git log --oneline`.
+
+
+## Phase 4
+
+La card completa è pubblicata come repository HACS Dashboard separata:
+https://github.com/monkeypr00f/contextual-controls-card, release v1.0.0. La CI
+verifica sintassi, comportamento essenziale e struttura HACS. L’integrazione
+0.5.0 rimuove l’anteprima incorporata; la configurazione Lovelace esistente
+continua a usare lo stesso tipo di card.

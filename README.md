@@ -5,18 +5,17 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Phase 3 + anteprima UI, versione 0.4.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Phase 4, versione 0.5.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
 senza eseguire comandi.
 
-La distribuzione HACS è di tipo **Integration**. La versione 0.4.0 include una
-prima card Lovelace per rendere utilizzabile il risultato del sensore. La card
-definitiva avrà una repository HACS Dashboard separata, come raccomandato da HACS.
-
-> Questa è una fetta anticipata della Phase 4 per validare layout e interazioni.
-> La versione 0.4.0 non è ancora stata installata nell’istanza Home Assistant reale.
+Il backend è distribuito come HACS **Integration**. La card Lovelace è il pacchetto
+HACS **Dashboard** separato
+[`contextual-controls-card`](https://github.com/monkeypr00f/contextual-controls-card),
+così può essere aggiornata senza riavviare Home Assistant. Se usavi l’anteprima
+incorporata, installa la card prima di aggiornare l’integrazione a 0.5.0.
 
 ## Installazione manuale
 
@@ -164,16 +163,12 @@ non esegue alcuna azione sui dispositivi. La card apre more-info per i controlli
 sensibili e chiama servizi soltanto dopo un tocco dell’utente. La selezione delle entità non crea
 un nuovo sistema di permessi: valgono i permessi nativi Home Assistant.
 
-## Card Lovelace di anteprima
+## Card Lovelace
 
-Dopo installazione o aggiornamento e riavvio:
-
-1. modifica una dashboard;
-2. scegli **Aggiungi card**;
-3. cerca **Contextual Controls**;
-4. scegli il sensore proposto e salva.
-
-Non occorre aggiungere risorse Lovelace né modificare YAML. La card mostra una
+Installa `https://github.com/monkeypr00f/contextual-controls-card` in HACS come
+repository **Dashboard**, aggiorna il browser, quindi modifica una dashboard,
+scegli **Aggiungi card**, cerca **Contextual Controls**, scegli il sensore e salva.
+HACS registra la risorsa e non occorre modificare YAML. La card mostra una
 griglia responsive di tile con icona, nome e stato. Dal suo editor visuale puoi
 configurare titolo, limite, colonne desktop/mobile, motivo, punteggio, ultimo
 aggiornamento, controlli fissi e azione al tocco. Il titolo dinamico usa
@@ -185,7 +180,7 @@ vacuum, select e number aprono more-info. La pressione prolungata apre sempre
 more-info. La card non esegue mai azioni senza un’interazione dell’utente.
 
 Se non ci sono suggerimenti può nascondersi oppure mostrare “Nessun suggerimento
-per ora”. I layout Compact e Chips restano parte della Phase 4 completa.
+per ora”. Tiles, Compact e Chips sono implementati e selezionabili dall’editor visuale.
 
 ## Contratto del sensore
 

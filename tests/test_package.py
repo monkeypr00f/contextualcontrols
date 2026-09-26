@@ -34,13 +34,13 @@ def test_hacs_structure_and_local_requirements():
     assert manifest["config_flow"] is True
     assert manifest["requirements"] == []
     assert manifest["iot_class"] == "calculated"
-    assert manifest["after_dependencies"] == ["frontend", "http"]
-    assert (COMPONENT / "frontend" / "contextual-controls-card.js").exists()
+    assert "after_dependencies" not in manifest
+    assert not (COMPONENT / "frontend.py").exists()
     assert load(ROOT / "hacs.json")["homeassistant"] == "2026.9.3"
     assert (ROOT / "LICENSE").exists()
     from custom_components.contextual_controls.const import DEFAULTS, VERSION
 
-    assert manifest["version"] == VERSION == "0.4.0"
+    assert manifest["version"] == VERSION == "0.5.0"
     assert DEFAULTS["ai_provider"] == "disabled"
     assert DEFAULTS["ai_share_exact_timestamps"] is False
     assert DEFAULTS["ai_share_presence_information"] is False
