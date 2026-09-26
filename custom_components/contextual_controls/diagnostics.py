@@ -21,6 +21,15 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "learning_records_by_source": dict(sorted(sources.items())),
         "presence_entities_count": len(options["presence_entities"]),
         "context_entities_count": len(options["context_entities"]),
+        "quick_access_enabled": options["quick_access_enabled"],
+        "quick_access_slots": options["quick_access_slots"],
+        "slot_generation": coordinator.slot_manager.generation,
+        "last_slot_refresh": coordinator.slot_manager.last_refresh.isoformat()
+        if coordinator.slot_manager.last_refresh
+        else None,
+        "quick_access_executions": coordinator.quick_access_executions,
+        "stale_slot_rejections": coordinator.stale_slot_rejections,
+        "sensitive_action_rejections": coordinator.sensitive_action_rejections,
         "configuration": {
             key: options[key]
             for key in (
@@ -46,6 +55,13 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "ai_share_exact_timestamps",
                 "ai_share_presence_information",
                 "ai_share_context_entities",
+                "quick_access_enabled",
+                "quick_access_slots",
+                "quick_access_safety_mode",
+                "quick_access_stability",
+                "quick_access_response",
+                "quick_access_track_usage",
+                "quick_access_usage_weight",
             )
         },
     }

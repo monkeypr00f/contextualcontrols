@@ -85,7 +85,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await history.async_load(dt_util.utcnow())
         self.assertEqual(len(history.records), 1)
         self.assertEqual(history.records[0].confidence, 0.2)
-        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 3)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 4)
         future = History(self.hass, "future")
         path = Path(future.store.path)
         await asyncio.to_thread(write, 999)
@@ -269,6 +269,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(coordinator.history.records), 5)
         # Unload flushes; a fresh coordinator restores the real Store file.
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
+
         # A new process proves persistence without reusing HA's Store cache.
         reader = """
 import asyncio, sys
@@ -387,6 +388,133 @@ asyncio.run(read())
         self.assertNotIn("test_user", str(diagnostics))
         self.assertNotIn("test_contextual", str(diagnostics))
         self.assertNotIn("diagnostic-secret", str(diagnostics))
+        self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
+
+    async def test_quick_access_services_safety_learning_and_concurrency(self):
+        flow = await self.hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        flow = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"name": "Quick access"}
+        )
+        result = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"],
+            {
+                "included_entities": ["light.test_contextual"],
+                "included_domains": [],
+                "excluded_entities": [],
+            },
+        )
+        entry = result["result"]
+        await self.hass.async_block_till_done()
+        coordinator = entry.runtime_data
+        coordinator.options["pinned_entities"] = ["light.test_contextual"]
+        await coordinator.async_refresh()
+        self.assertIsNotNone(self.hass.states.get("sensor.contextual_control_1"))
+
+        response = await self.hass.services.async_call(
+            DOMAIN,
+            "get_slot",
+            {"slot": 1},
+            blocking=True,
+            return_response=True,
+        )
+        self.assertEqual(response["entity_id"], "light.test_contextual")
+        self.assertEqual(response["recommended_action"], "toggle")
+
+        stale = await self.hass.services.async_call(
+            DOMAIN,
+            "execute_slot",
+            {"slot": 1, "expected_entity_id": "light.somewhere_else"},
+            blocking=True,
+            return_response=True,
+        )
+        self.assertEqual(stale["reason"], "stale_slot")
+        self.assertEqual(coordinator.stale_slot_rejections, 1)
+
+        active = 0
+        maximum_active = 0
+
+        async def toggle(call):
+            nonlocal active, maximum_active
+            active += 1
+            maximum_active = max(maximum_active, active)
+            await asyncio.sleep(0.01)
+            active -= 1
+            self.calls.append(call)
+
+        self.hass.services.async_register("light", "toggle", toggle)
+        before = len(coordinator.history.records)
+        first, second = await asyncio.gather(
+            coordinator.async_execute_slot(
+                1,
+                expected_entity_id="light.test_contextual",
+                mode="automatic",
+                confirmed=False,
+                source="apple_watch",
+                context=Context(user_id="test_user"),
+            ),
+            coordinator.async_execute_slot(
+                1,
+                expected_entity_id="light.test_contextual",
+                mode="automatic",
+                confirmed=False,
+                source="ios_lock_screen",
+                context=Context(user_id="test_user"),
+            ),
+        )
+        self.assertTrue(first["success"] and second["success"])
+        self.assertEqual(maximum_active, 1)
+        self.assertEqual(len(coordinator.history.records), before + 2)
+        self.assertEqual(coordinator.history.records[-2].source, "quick_access")
+        self.assertEqual(coordinator.history.records[-2].source_detail, "apple_watch")
+        self.assertEqual(coordinator.history.records[-1].source_detail, "ios_lock_screen")
+
+        class ForbiddenAI:
+            async def async_rerank(self, *args, **kwargs):
+                raise AssertionError("slot execution must not call AI")
+
+        coordinator._ai_manager = ForbiddenAI()
+        direct = await coordinator.async_execute_slot(
+            1,
+            expected_entity_id="light.test_contextual",
+            mode="automatic",
+            confirmed=False,
+            source="shortcut",
+            context=Context(user_id="test_user"),
+        )
+        self.assertTrue(direct["success"])
+
+        coordinator.options["quick_access_sensitive_entities"] = ["light.test_contextual"]
+        blocked = await coordinator.async_execute_slot(
+            1,
+            expected_entity_id="light.test_contextual",
+            mode="execute",
+            confirmed=True,
+            source="shortcut",
+            context=Context(user_id="test_user"),
+        )
+        self.assertEqual(blocked["reason"], "requires_confirmation")
+        self.assertEqual(coordinator.sensitive_action_rejections, 1)
+        empty = await coordinator.async_execute_slot(
+            6,
+            expected_entity_id=None,
+            mode="automatic",
+            confirmed=False,
+            source="unknown",
+            context=Context(user_id="test_user"),
+        )
+        self.assertEqual(empty["reason"], "empty_slot")
+        invalid = await coordinator.async_execute_slot(
+            7,
+            expected_entity_id=None,
+            mode="automatic",
+            confirmed=False,
+            source="unknown",
+            context=Context(user_id="test_user"),
+        )
+        self.assertEqual(invalid["reason"], "invalid_slot")
+        self.hass.states.async_set("light.test_contextual", "unavailable")
+        unavailable = coordinator.quick_access_slot(1)
+        self.assertEqual(unavailable["reason"], "unavailable_target")
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
 
 

@@ -36,7 +36,8 @@
           "dashboard": "Dashboard",
           "advanced": "Advanced / Debug",
           "ai": "Optional AI",
-          "reset": "Reset learning"
+          "reset": "Reset learning",
+          "quick_access": "Quick Access / Apple"
         }
       },
       "general": {
@@ -193,6 +194,29 @@
           "openai_endpoint": "Base URL or complete /v1/chat/completions URL.",
           "api_key": "Leave empty to keep the existing key. It is stored in ConfigEntry data."
         }
+      },
+      "quick_access": {
+        "title": "Quick Access / Apple",
+        "description": "Expose stable slots to Shortcuts, Apple Watch and the Lock Screen without recalculating ranking.",
+        "data": {
+          "quick_access_enabled": "Enable Quick Access",
+          "quick_access_slots": "Number of slots",
+          "quick_access_safety_mode": "Safety mode",
+          "quick_access_stability": "Slot stability",
+          "quick_access_sensitive_entities": "Sensitive entities",
+          "quick_access_response": "Enable action response",
+          "quick_access_track_usage": "Track quick-access usage",
+          "quick_access_usage_weight": "Quick-access usage weight"
+        },
+        "data_description": {
+          "quick_access_slots": "Creates 1–10 slot sensors with stable entity IDs.",
+          "quick_access_safety_mode": "Safe blocks sensitive entities; Balanced allows common controls; Direct still requires confirmation for sensitive entities.",
+          "quick_access_stability": "Temporarily keeps the published target to prevent changes between display and tap.",
+          "quick_access_sensitive_entities": "These entities always follow sensitive policy, regardless of domain.",
+          "quick_access_response": "Allows Shortcuts to receive the execute_slot JSON result.",
+          "quick_access_track_usage": "Successful executions feed the same ranking history.",
+          "quick_access_usage_weight": "Sets Quick Access usage confidence from 0 to 100."
+        }
       }
     },
     "error": {
@@ -200,7 +224,8 @@
       "confirmation_required": "Confirm the reset before continuing.",
       "entry_not_loaded": "This integration instance must be loaded.",
       "presence_required": "Choose at least one presence entity for require-home mode.",
-      "api_key_required": "Enter an API key."
+      "api_key_required": "Enter an API key.",
+      "entry_required": "Choose an integration instance when more than one is configured."
     }
   },
   "entity": {
@@ -224,6 +249,9 @@
             }
           }
         }
+      },
+      "quick_access_slot": {
+        "name": "Contextual control {slot}"
       }
     }
   },
@@ -239,6 +267,9 @@
     },
     "storage_unavailable": {
       "message": "Learning storage could not be loaded. Restore a backup or check the logs."
+    },
+    "entry_required": {
+      "message": "Choose an integration instance when more than one is configured."
     }
   },
   "services": {
@@ -260,6 +291,47 @@
         "confirm": {
           "name": "Confirm learning reset",
           "description": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
+        }
+      }
+    },
+    "get_slot": {
+      "name": "Get slot",
+      "description": "Returns the current target without executing an action.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Integration instance"
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Slot number from 1 to 10."
+        }
+      }
+    },
+    "execute_slot": {
+      "name": "Execute slot",
+      "description": "Safely executes the target already published in the slot.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Integration instance"
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Slot number from 1 to 10."
+        },
+        "expected_entity_id": {
+          "name": "Expected entity",
+          "description": "Rejects execution if the slot target has changed."
+        },
+        "mode": {
+          "name": "Mode"
+        },
+        "confirmed": {
+          "name": "Confirmed",
+          "description": "Use only after explicit user confirmation."
+        },
+        "source": {
+          "name": "Source",
+          "description": "Used only for learning and diagnostics."
         }
       }
     }
@@ -346,7 +418,10 @@
         "input_boolean": "input_boolean",
         "vacuum": "vacuum",
         "select": "select",
-        "number": "number"
+        "number": "number",
+        "input_button": "input_button",
+        "alarm_control_panel": "alarm_control_panel",
+        "siren": "siren"
       }
     },
     "excluded_domains": {
@@ -364,7 +439,10 @@
         "input_boolean": "input_boolean",
         "vacuum": "vacuum",
         "select": "select",
-        "number": "number"
+        "number": "number",
+        "input_button": "input_button",
+        "alarm_control_panel": "alarm_control_panel",
+        "siren": "siren"
       }
     },
     "mode": {
@@ -379,6 +457,22 @@
         "disabled": "Disabled",
         "ollama": "Ollama",
         "openai_compatible": "OpenAI-compatible"
+      }
+    },
+    "quick_access_safety_mode": {
+      "options": {
+        "safe": "Safe",
+        "balanced": "Balanced",
+        "direct": "Direct"
+      }
+    },
+    "quick_access_stability": {
+      "options": {
+        "0": "Immediate",
+        "30": "30 seconds",
+        "60": "1 minute",
+        "120": "2 minutes",
+        "300": "5 minutes"
       }
     }
   }

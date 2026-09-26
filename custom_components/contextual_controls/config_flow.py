@@ -15,6 +15,8 @@ from .const import (
     MODES,
     NAME,
     PRESENCE_DOMAINS,
+    QUICK_ACCESS_SAFETY_MODES,
+    QUICK_ACCESS_STABILITY,
     SUPPORTED_DOMAINS,
 )
 
@@ -41,6 +43,16 @@ SECTIONS = {
     ),
     "context": ("presence_entities", "presence_mode", "context_entities"),
     "dashboard": ("pinned_entities", "pinned_position", "pinned_use_slots"),
+    "quick_access": (
+        "quick_access_enabled",
+        "quick_access_slots",
+        "quick_access_safety_mode",
+        "quick_access_stability",
+        "quick_access_sensitive_entities",
+        "quick_access_response",
+        "quick_access_track_usage",
+        "quick_access_usage_weight",
+    ),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
 }
 AI_COMMON_FIELDS = (
@@ -78,6 +90,8 @@ CHOICES = {
     "refresh_minutes": ["0", "5", "10", "15", "30", "60"],
     "pinned_position": ["before", "after"],
     "cold_start": ["pinned", "recent", "frequent", "domains"],
+    "quick_access_safety_mode": QUICK_ACCESS_SAFETY_MODES,
+    "quick_access_stability": QUICK_ACCESS_STABILITY,
 }
 NUMERIC_CHOICES = {"learning_period_days", "time_window_minutes", "refresh_minutes"}
 MULTIPLE_CHOICES = {"included_domains", "excluded_domains", "learn_sources"}
@@ -87,6 +101,7 @@ ENTITY_FIELDS = {
     "pinned_entities",
     "ignored_entities",
     "context_entities",
+    "quick_access_sensitive_entities",
 }
 PRESENCE_FIELDS = {"presence_entities"}
 AREA_FIELDS = {"included_areas", "excluded_areas"}
@@ -103,6 +118,9 @@ BOOLEAN_FIELDS = {
     "ai_share_exact_timestamps",
     "ai_share_presence_information",
     "ai_share_context_entities",
+    "quick_access_enabled",
+    "quick_access_response",
+    "quick_access_track_usage",
 }
 TEXT_FIELDS = {"ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id"}
 NUMBER_RANGES = {
@@ -113,6 +131,8 @@ NUMBER_RANGES = {
     "ai_min_refresh_minutes": (5, 120, 1),
     "ai_timeout_seconds": (1, 120, 1),
     "ai_temperature": (0, 1, 0.1),
+    "quick_access_slots": (1, 10, 1),
+    "quick_access_usage_weight": (0, 100, 1),
 }
 
 
@@ -178,6 +198,8 @@ def normalize(values):
             "candidate_pool_size",
             "ai_min_refresh_minutes",
             "ai_timeout_seconds",
+            "quick_access_slots",
+            "quick_access_usage_weight",
         )
         else value
         for key, value in values.items()
@@ -273,6 +295,9 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_dashboard(self, user_input=None):
         return await self._section("dashboard", user_input)
+
+    async def async_step_quick_access(self, user_input=None):
+        return await self._section("quick_access", user_input)
 
     async def async_step_advanced(self, user_input=None):
         return await self._section("advanced", user_input)

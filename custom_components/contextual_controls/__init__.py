@@ -25,8 +25,27 @@ async def async_migrate_entry(hass, entry):
 async def async_setup(hass, config):
     """Register integration actions once, independent of loaded entries."""
     import voluptuous as vol
+    from homeassistant.core import SupportsResponse
     from homeassistant.exceptions import ServiceValidationError
     from homeassistant.helpers import config_validation as cv
+
+    def coordinator_for(call):
+        entry_id = call.data.get("config_entry_id")
+        entries = [
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if getattr(entry, "runtime_data", None) is not None
+            and (entry_id is None or entry.entry_id == entry_id)
+        ]
+        if not entries:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_not_loaded"
+            )
+        if len(entries) > 1:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entry_required"
+            )
+        return entries[0].runtime_data
 
     async def reset_learning(call):
         entry = hass.config_entries.async_get_entry(call.data["config_entry_id"])
@@ -55,6 +74,63 @@ async def async_setup(hass, config):
                 vol.Optional("user_id"): cv.string,
             }
         ),
+    )
+
+    slot_schema = {
+        vol.Optional("config_entry_id"): cv.string,
+        vol.Required("slot"): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+    }
+
+    async def get_slot(call):
+        return coordinator_for(call).quick_access_slot(call.data["slot"])
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_slot",
+        get_slot,
+        schema=vol.Schema(slot_schema),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    async def execute_slot(call):
+        coordinator = coordinator_for(call)
+        response = await coordinator.async_execute_slot(
+            call.data["slot"],
+            expected_entity_id=call.data.get("expected_entity_id"),
+            mode=call.data["mode"],
+            confirmed=call.data["confirmed"],
+            source=call.data["source"],
+            context=call.context,
+        )
+        if coordinator.options["quick_access_response"] and call.return_response:
+            return response
+        return None
+
+    hass.services.async_register(
+        DOMAIN,
+        "execute_slot",
+        execute_slot,
+        schema=vol.Schema(
+            {
+                **slot_schema,
+                vol.Optional("expected_entity_id"): cv.entity_id,
+                vol.Required("mode", default="automatic"): vol.In(
+                    ("automatic", "more_info", "execute")
+                ),
+                vol.Required("confirmed", default=False): cv.boolean,
+                vol.Required("source", default="unknown"): vol.In(
+                    (
+                        "apple_watch",
+                        "ios_lock_screen",
+                        "shortcut",
+                        "action_button",
+                        "control_center",
+                        "unknown",
+                    )
+                ),
+            }
+        ),
+        supports_response=SupportsResponse.OPTIONAL,
     )
     return True
 

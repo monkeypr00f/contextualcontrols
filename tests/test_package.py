@@ -42,11 +42,14 @@ def test_hacs_structure_and_local_requirements():
     assert (COMPONENT / "brand" / "icon@2x.png").exists()
     from custom_components.contextual_controls.const import DEFAULTS, VERSION
 
-    assert manifest["version"] == VERSION == "0.5.2"
+    assert manifest["version"] == VERSION == "0.6.0"
     assert DEFAULTS["ai_provider"] == "disabled"
     assert DEFAULTS["ai_share_exact_timestamps"] is False
     assert DEFAULTS["ai_share_presence_information"] is False
     assert "openai_api_key" not in DEFAULTS
+    assert DEFAULTS["quick_access_enabled"] is True
+    assert DEFAULTS["quick_access_slots"] == 6
+    assert DEFAULTS["quick_access_stability"] == "120"
 
 
 def test_reasons_are_translated():

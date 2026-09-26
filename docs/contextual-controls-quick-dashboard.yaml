@@ -1,0 +1,17 @@
+title: Contextual Controls Quick
+views:
+  - title: Quick
+    path: quick
+    type: panel
+    cards:
+      - type: custom:contextual-controls-card
+        entity: sensor.contextual_controls
+        title: ""
+        max_controls: 6
+        desktop_columns: 3
+        mobile_columns: 2
+        show_state: true
+        show_reason: false
+        show_score: false
+        hide_when_empty: true
+        layout: tiles

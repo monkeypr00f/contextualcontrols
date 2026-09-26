@@ -1,0 +1,39 @@
+# Copy these entries under `script:` in configuration.yaml, or into scripts.yaml
+# without the outer `script:` key. They remain static while each target is dynamic.
+script:
+  contextual_control_1:
+    alias: Context 1
+    icon: mdi:numeric-1-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 1, source: apple_watch}
+  contextual_control_2:
+    alias: Context 2
+    icon: mdi:numeric-2-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 2, source: apple_watch}
+  contextual_control_3:
+    alias: Context 3
+    icon: mdi:numeric-3-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 3, source: apple_watch}
+  contextual_control_4:
+    alias: Context 4
+    icon: mdi:numeric-4-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 4, source: apple_watch}
+  contextual_control_5:
+    alias: Context 5
+    icon: mdi:numeric-5-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 5, source: apple_watch}
+  contextual_control_6:
+    alias: Context 6
+    icon: mdi:numeric-6-circle
+    sequence:
+      - action: contextual_controls.execute_slot
+        data: {slot: 6, source: apple_watch}

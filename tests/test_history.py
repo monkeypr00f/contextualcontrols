@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -30,7 +31,7 @@ def row(entity="light.a", user="alice", days=1):
 
 
 def test_serialization_preserves_all_fields():
-    records = [row()]
+    records = [row(), replace(row(), source="quick_access", source_detail="shortcut")]
     assert decode(encode(records)) == (records, 0)
 
 

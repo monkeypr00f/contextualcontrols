@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Phase 4, versione 0.5.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.6.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -62,6 +62,7 @@ In **Configura** trovi sezioni separate:
 | Apprendimento | 7–90 giorni, fascia ±30–180 minuti, recenza, origine, profilo, entità ignorate |
 | Contesto | Presenza, modalità presenza, entità contestuali |
 | Dashboard | Controlli fissi ordinabili, prima/dopo, occupazione degli slot |
+| Accesso rapido / Apple | Slot, sicurezza, stabilità, entità sensibili e apprendimento |
 | Avanzate / Debug | Soglia minima, cold start, dettagli dei punteggi |
 | AI opzionale | Provider, shortlist, cache, timeout, temperatura e privacy |
 | Reset | Cancellazione confermata per istanza, entità o utente |
@@ -158,10 +159,11 @@ contestuali. Gli entity ID disattivati vengono sostituiti da token come
 registry. Il default non invia minuti/secondi né presenza. Contesto invariato
 usa la cache; il minimo intervallo configurabile evita chiamate continue.
 
-Lock richiede inclusione esplicita. Alarm e siren sono esclusi. L’integrazione
-non esegue alcuna azione sui dispositivi. La card apre more-info per i controlli
-sensibili e chiama servizi soltanto dopo un tocco dell’utente. La selezione delle entità non crea
-un nuovo sistema di permessi: valgono i permessi nativi Home Assistant.
+Lock, alarm e siren richiedono inclusione esplicita. L’integrazione non esegue
+mai azioni autonomamente. La card e Quick Access chiamano servizi soltanto dopo
+un tocco o una richiesta esplicita dell’utente; Quick Access applica inoltre la
+policy di sicurezza configurata. La selezione delle entità non crea un nuovo
+sistema di permessi: valgono i permessi nativi Home Assistant.
 
 ## Card Lovelace
 
@@ -219,6 +221,89 @@ presence_home: true
 
 La card usa questo attributo come contratto pubblico e non analizza tutte le
 entità dell’istanza.
+
+## Apple Quick Access
+
+Contextual Controls espone da 1 a 10 slot stabili, sei per impostazione
+predefinita: `sensor.contextual_control_1`,
+`sensor.contextual_control_2`, ecc. L'entity ID dello slot resta invariato;
+nome, icona, stato e target seguono l'ultimo ranking già calcolato. Leggere o
+eseguire uno slot non avvia AI, scoring o query storiche.
+
+Le due azioni pubbliche sono:
+
+```yaml
+action: contextual_controls.get_slot
+data:
+  slot: 1
+response_variable: current_slot
+```
+
+```yaml
+action: contextual_controls.execute_slot
+data:
+  slot: 1
+  expected_entity_id: light.camera
+  source: shortcut
+response_variable: result
+```
+
+`expected_entity_id` è facoltativo ma consigliato: se il target è cambiato,
+l'azione restituisce `stale_slot` senza comandare il nuovo dispositivo. Gli slot
+mantengono inoltre il target per due minuti per impostazione predefinita. Safe
+protegge entità sensibili e domini di sicurezza; Balanced consente i controlli
+comuni ma continua a bloccare i domini di sicurezza; Direct richiede comunque
+`confirmed: true` per un'entità sensibile e non inventa azioni ambigue.
+
+### Apple Watch
+
+Percorso con meno configurazione: crea sei Shortcuts chiamati **Context 1** …
+**Context 6**. In ciascuno aggiungi Home Assistant → **Perform action**, scegli
+`contextual_controls.execute_slot` e usa JSON `{"slot":1,"source":"apple_watch"}`
+cambiando il numero. Abilita **Show on Apple Watch** nelle proprietà dello
+Shortcut. Lo stesso Shortcut può essere lanciato da Siri o dalla complication
+Shortcuts.
+
+La Home dell'app Home Assistant per Apple Watch mostra ufficialmente Scripts,
+Scenes e iOS Actions. In alternativa copia
+[`docs/apple-quick-access-scripts.yaml`](docs/apple-quick-access-scripts.yaml),
+riavvia, poi nell'iPhone apri Companion App → Apple Watch → Configuration e
+aggiungi gli script Context 1…6. Una custom integration HACS non può crearli o
+inserirli nella schermata Watch tramite API pubblica.
+
+Gli script Watch conservano label e icona statiche. Per mostrare il target
+dinamico usa una complication templata con
+`states('sensor.contextual_control_1')`; gli aggiornamenti delle complication
+sono soggetti al budget watchOS e non costituiscono una griglia interattiva.
+
+### iPhone Lock Screen
+
+La soluzione diretta è aggiungere uno Shortcut Context N alla Lock Screen,
+all'Action Button o al Control Center. Per un accesso visivo usa il widget
+accessory circolare **Scripts** con uno degli script wrapper, oppure **Open Page**
+verso la dashboard rapida. Il Custom Widget Beta della Companion App supporta
+attualmente i formati System, non quelli accessory della Lock Screen.
+
+La configurazione di esempio per una dashboard mobile è in
+[`docs/contextual-controls-quick-dashboard.yaml`](docs/contextual-controls-quick-dashboard.yaml).
+Dopo averla aggiunta, usa l'App Intent Home Assistant **Open Page** o il widget
+Open Page. Live Activities non sono usate: mostrano stato e aprono un URL, ma la
+documentazione corrente non espone pulsanti dinamici adatti a questi slot.
+
+### Shortcuts, Action Button e Control Center
+
+Lo Shortcut usa sempre lo stesso numero; non contiene l'entity ID dinamico.
+Home Assistant **Perform action** restituisce il JSON dell'azione quando la
+risposta è abilitata. Aggiungi l'azione Shortcuts **Vibra dispositivo** soltanto
+nel ramo in cui `success` è vero. Per target sensibili crea una variante che:
+
+1. chiama `get_slot` e mostra nome/azione;
+2. chiede conferma;
+3. chiama `execute_slot` con `expected_entity_id` dalla prima risposta e
+   `confirmed: true`.
+
+La provenienza (`apple_watch`, `ios_lock_screen`, `shortcut`, `action_button` o
+`control_center`) serve solo a storico e diagnostica, mai ad allentare la policy.
 
 ## Reset e ignora utilizzo
 
@@ -280,7 +365,7 @@ python -m unittest tests.runtime_check -v
 ```
 
 CI include syntax, lint, tipi del motore, pytest, test runtime HA, hassfest e HACS.
-Ultima verifica locale: 69 test passati. La CI esegue inoltre 3 test completi
+Ultima verifica locale: 77 test passati. La CI esegue inoltre 4 test completi
 con Home Assistant 2026.9.3, hassfest e HACS. I test coprono anche privacy,
 parsing, provider, cache, ranking e fallback AI. Risultati
 e limiti della verifica effettiva sono in [docs/VERIFICATION.md](docs/VERIFICATION.md).

@@ -1,10 +1,12 @@
-"""Home Assistant event ingestion and snapshot-based statistical evaluation."""
+"""Home Assistant event ingestion, ranking and cached quick-access execution."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.automation import EVENT_AUTOMATION_TRIGGERED
+from homeassistant.components.media_player import MediaPlayerEntityFeature
 from homeassistant.components.script.const import EVENT_SCRIPT_STARTED
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -12,7 +14,8 @@ from homeassistant.const import (
     EVENT_HOMEASSISTANT_STARTED,
     EVENT_STATE_CHANGED,
 )
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import Context, Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -34,8 +37,15 @@ from .ai import (
 )
 from .const import DEFAULTS, DOMAIN
 from .context import is_home, presence_status, snapshot_context
-from .eligibility import compose, eligible
+from .eligibility import available, compose, eligible
 from .models import Candidate, ScoringSettings, Usage
+from .quick_access import (
+    DEFAULT_ICONS,
+    QUICK_ACCESS_SOURCES,
+    SlotManager,
+    resolve_default_action,
+    safety_rejection,
+)
 from .scoring import rank
 from .storage import History
 from .tracking import ACTIONS, Deduplicator, OriginTracker, classify, supports_action
@@ -70,6 +80,15 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ai_manager: AIManager | None = None
         self._ai_last_update: datetime | None = None
         self._ai_status = "disabled"
+        self.slot_manager = SlotManager(
+            int(self.options["quick_access_slots"]),
+            int(self.options["quick_access_stability"]),
+        )
+        self._quick_access_lock = asyncio.Lock()
+        self._quick_access_contexts: set[str] = set()
+        self.quick_access_executions = 0
+        self.stale_slot_rejections = 0
+        self.sensitive_action_rejections = 0
 
     async def async_initialize(self) -> None:
         await self.history.async_load(dt_util.utcnow())
@@ -208,6 +227,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if domain == "conversation" and action == "process":
             self._origins.observe(event.context.id, "assist", event.time_fired.timestamp())
             return
+        if event.context.id in self._quick_access_contexts:
+            return
         if domain not in ACTIONS and domain != "homeassistant":
             return
         source, confidence = classify(
@@ -274,6 +295,9 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for entity_id in self.eligible_ids
             if (state := self.hass.states.get(entity_id))
         }
+        learn_sources = list(self.options["learn_sources"])
+        if self.options["quick_access_track_usage"]:
+            learn_sources.append("quick_access")
         settings = ScoringSettings(
             **{
                 key: self.options[key]
@@ -284,13 +308,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "minimum_confidence",
                     "cold_start",
                     "user_id",
-                    "learn_sources",
                     "ignored_entities",
                     "consider_weekday",
                     "weekday_mode",
                     "presence_mode",
                 )
             },
+            learn_sources=tuple(dict.fromkeys(learn_sources)),
             presence_home=presence,
             active_area_ids=active_areas,
             context_states=context,
@@ -396,6 +420,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "usage_count_in_window": item.count,
                 }
             )
+        if self.options["quick_access_enabled"]:
+            self.slot_manager.update(rows, now, self._quick_target_valid)
+        else:
+            self.slot_manager.clear(now)
         result = {
             "entities": rows,
             "last_update": now.isoformat(),
@@ -411,6 +439,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "presence_home": presence,
             "context_entities_count": len(context),
             "active_areas_count": len(active_areas),
+            "quick_access_enabled": self.options["quick_access_enabled"],
+            "quick_access_slots": int(self.options["quick_access_slots"]),
+            "slot_generation": self.slot_manager.generation,
+            "last_slot_refresh": self.slot_manager.last_refresh.isoformat()
+            if self.slot_manager.last_refresh
+            else None,
             **self.history.counts(),
         }
         if ai_error is not None:
@@ -432,6 +466,163 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for item in ranked[:30]
             }
         return result
+
+    @callback
+    def _quick_target_valid(self, entity_id: str) -> bool:
+        state = self.hass.states.get(entity_id)
+        if entity_id not in self.eligible_ids or state is None:
+            return False
+        return available(Candidate(entity_id, state.state, self.areas.get(entity_id)))
+
+    @callback
+    def quick_access_slot(self, slot: int) -> dict[str, Any]:
+        """Return a slot from coordinator memory without triggering a refresh."""
+        snapshot = self.slot_manager.get(slot)
+        if snapshot is None:
+            return {"slot": slot, "success": False, "reason": "empty_slot", "available": False}
+        state = self.hass.states.get(snapshot.entity_id)
+        if state is None or not self._quick_target_valid(snapshot.entity_id):
+            return {
+                "slot": slot,
+                "entity_id": snapshot.entity_id,
+                "success": False,
+                "reason": "unavailable_target",
+                "available": False,
+                "slot_generation_id": self.slot_manager.generation,
+            }
+        domain = snapshot.entity_id.partition(".")[0]
+        supported = int(state.attributes.get("supported_features", 0) or 0)
+        media_mask = int(MediaPlayerEntityFeature.PLAY | MediaPlayerEntityFeature.PAUSE)
+        action = resolve_default_action(snapshot.entity_id, state.state, supported, media_mask)
+        return {
+            "slot": slot,
+            "entity_id": snapshot.entity_id,
+            "name": state.attributes.get("friendly_name", snapshot.entity_id),
+            "icon": state.attributes.get("icon") or DEFAULT_ICONS.get(domain),
+            "state": state.state,
+            "domain": domain,
+            "recommended_action": action.name if action else "more_info",
+            "score": snapshot.score,
+            "reason": snapshot.reason,
+            "source": snapshot.source,
+            "pinned": snapshot.pinned,
+            "available": True,
+            "slot_generation_id": self.slot_manager.generation,
+            "slot_updated_at": snapshot.changed_at.isoformat(),
+        }
+
+    async def async_execute_slot(
+        self,
+        slot: int,
+        *,
+        expected_entity_id: str | None,
+        mode: str,
+        confirmed: bool,
+        source: str,
+        context: Context,
+    ) -> dict[str, Any]:
+        """Execute a cached slot; never refresh ranking or call an AI provider."""
+        async with self._quick_access_lock:
+            if not self.options["quick_access_enabled"]:
+                return {"slot": slot, "success": False, "reason": "quick_access_disabled"}
+            if not 1 <= slot <= int(self.options["quick_access_slots"]):
+                return {"slot": slot, "success": False, "reason": "invalid_slot"}
+            result = self.quick_access_slot(slot)
+            if not result.get("available"):
+                return result
+            entity_id = result["entity_id"]
+            if expected_entity_id and expected_entity_id != entity_id:
+                self.stale_slot_rejections += 1
+                return {
+                    "slot": slot,
+                    "entity_id": entity_id,
+                    "success": False,
+                    "reason": "stale_slot",
+                }
+            rejection = safety_rejection(
+                entity_id,
+                self.options["quick_access_safety_mode"],
+                self.options["quick_access_sensitive_entities"],
+                confirmed,
+            )
+            if rejection:
+                self.sensitive_action_rejections += 1
+                return {
+                    "slot": slot,
+                    "entity_id": entity_id,
+                    "name": result["name"],
+                    "success": False,
+                    "reason": rejection,
+                    "requires_confirmation": True,
+                }
+            if mode == "more_info":
+                return {
+                    "slot": slot,
+                    "entity_id": entity_id,
+                    "name": result["name"],
+                    "success": False,
+                    "reason": "requires_app",
+                }
+            state = self.hass.states.get(entity_id)
+            assert state is not None
+            supported = int(state.attributes.get("supported_features", 0) or 0)
+            media_mask = int(MediaPlayerEntityFeature.PLAY | MediaPlayerEntityFeature.PAUSE)
+            action = resolve_default_action(entity_id, state.state, supported, media_mask)
+            if action is None or not self.hass.services.has_service(action.domain, action.service):
+                return {
+                    "slot": slot,
+                    "entity_id": entity_id,
+                    "name": result["name"],
+                    "success": False,
+                    "reason": "unsupported_action",
+                }
+            self._quick_access_contexts.add(context.id)
+            try:
+                try:
+                    await self.hass.services.async_call(
+                        action.domain,
+                        action.service,
+                        {"entity_id": entity_id},
+                        blocking=True,
+                        context=context,
+                    )
+                except HomeAssistantError:
+                    return {
+                        "slot": slot,
+                        "entity_id": entity_id,
+                        "name": result["name"],
+                        "success": False,
+                        "reason": "service_error",
+                    }
+            finally:
+                self._quick_access_contexts.discard(context.id)
+            if self.options["quick_access_track_usage"]:
+                now = dt_util.utcnow()
+                presence, context_states, _active_areas = self._signal_snapshot()
+                self.history.append(
+                    Usage(
+                        now,
+                        entity_id,
+                        context.user_id,
+                        "quick_access",
+                        action.service,
+                        float(self.options["quick_access_usage_weight"]) / 100,
+                        self.areas.get(entity_id),
+                        presence,
+                        context_states,
+                        source if source in QUICK_ACCESS_SOURCES else "unknown",
+                    )
+                )
+                self._request()
+            self.quick_access_executions += 1
+            return {
+                "slot": slot,
+                "entity_id": entity_id,
+                "name": result["name"],
+                "action": action.name,
+                "success": True,
+                "slot_generation_id": self.slot_manager.generation,
+            }
 
     async def async_close(self) -> None:
         self._closed = True

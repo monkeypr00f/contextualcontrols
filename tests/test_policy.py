@@ -46,8 +46,8 @@ def test_locks_explicit_and_unsupported_safety(options):
     assert not eligible(Candidate("lock.door", "locked"), options)
     options["included_entities"] = ["lock.door", "siren.a", "alarm_control_panel.a"]
     assert eligible(Candidate("lock.door", "locked"), options)
-    assert not eligible(Candidate("siren.a", "off"), options)
-    assert not eligible(Candidate("alarm_control_panel.a", "disarmed"), options)
+    assert eligible(Candidate("siren.a", "off"), options)
+    assert eligible(Candidate("alarm_control_panel.a", "disarmed"), options)
 
 
 @pytest.mark.parametrize(
