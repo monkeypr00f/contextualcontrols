@@ -43,6 +43,12 @@ class Ranked:
     presence: float = 1.0
     area: float = 1.0
     context: float = 1.0
+    base_score: float = 0.0
+    sequence_score: float = 0.0
+    acceptance_score: float = 0.0
+    acceptance_rate: float = 0.5
+    ignore_penalty: float = 0.0
+    adaptive_confidence: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

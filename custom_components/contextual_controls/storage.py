@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
+from .adaptive import LearningEngine
 from .const import DOMAIN, MAX_RECORDS, RETENTION_DAYS, STORAGE_VERSION
 from .history import decode, encode, migrate_payload, reset, retain
 from .models import Usage
@@ -29,6 +30,7 @@ class History:
             serialize_in_event_loop=False,
         )
         self.records: deque[Usage] = deque()
+        self.learning = LearningEngine()
         self.rejected = 0
         self.evicted = 0
 
@@ -39,6 +41,7 @@ class History:
         rows, self.rejected = await self.hass.async_add_executor_job(decode, payload)
         rows, self.evicted = await self.hass.async_add_executor_job(retain, rows, now)
         self.records = deque(rows)
+        self.learning = LearningEngine(payload.get("adaptive", {}))
 
     @callback
     def prune(self, now: datetime) -> None:
@@ -59,11 +62,13 @@ class History:
     def schedule_save(self) -> None:
         # The executor sees only this immutable tuple, never the live deque.
         snapshot = tuple(self.records)
-        self.store.async_delay_save(lambda: encode(snapshot), 15)
+        adaptive = self.learning.export()
+        self.store.async_delay_save(lambda: encode(snapshot, adaptive), 15)
 
     async def async_flush(self) -> None:
         snapshot = tuple(self.records)
-        payload = await self.hass.async_add_executor_job(encode, snapshot)
+        adaptive = self.learning.export()
+        payload = await self.hass.async_add_executor_job(encode, snapshot, adaptive)
         await self.store.async_save(payload)
         # Ingestion may continue while a reset flush serializes/writes. Ensure
         # a newer delayed snapshot is not overwritten by the older flush.
@@ -80,4 +85,5 @@ class History:
             "learning_records_count": len(self.records),
             "rejected_records": self.rejected,
             "capacity_evictions": self.evicted,
+            **self.learning.counts(),
         }

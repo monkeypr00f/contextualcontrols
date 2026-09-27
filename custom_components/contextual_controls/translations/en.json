@@ -26,10 +26,10 @@
   },
   "options": {
     "step": {
-    "init": {
-      "title": "Configure Contextual Controls",
-      "description": "Open and edit any section. Changes remain in this dialog until you choose Save and close.",
-      "menu_options": {
+      "init": {
+        "title": "Configure Contextual Controls",
+        "description": "Open and edit any section. Changes remain in this dialog until you choose Save and close.",
+        "menu_options": {
           "general": "General",
           "entities": "Entities",
           "learning": "Learning",
@@ -38,9 +38,11 @@
           "advanced": "Advanced / Debug",
           "ai": "Optional AI",
           "reset": "Reset learning",
-        "quick_access": "Quick Access / Apple",
-        "save": "Save and close"
-      }
+          "quick_access": "Quick Access / Apple",
+          "save": "Save and close",
+          "adaptive": "Adaptive Learning",
+          "adaptive_sources": "Adaptive source weights"
+        }
       },
       "general": {
         "title": "General",
@@ -219,6 +221,56 @@
           "quick_access_track_usage": "Successful executions feed the same ranking history.",
           "quick_access_usage_weight": "Sets Quick Access usage confidence from 0 to 100."
         }
+      },
+      "adaptive": {
+        "title": "Adaptive Learning",
+        "description": "Configure the local, explainable layer that learns sequences and suggestion usefulness.",
+        "data": {
+          "adaptive_learning": "Enable adaptive learning",
+          "sequence_learning": "Enable sequence learning",
+          "sequence_window_minutes": "Sequence learning window",
+          "sequence_influence": "Sequence influence",
+          "minimum_transition_occurrences": "Minimum transition occurrences",
+          "sequence_decay_days": "Sequence memory decay",
+          "ignored_suggestion_learning": "Learn from ignored suggestions",
+          "suggestion_acceptance_window_minutes": "Suggestion acceptance window",
+          "minimum_exposures": "Minimum exposures before penalty",
+          "ignored_suggestion_penalty": "Ignored suggestion penalty",
+          "acceptance_boost": "Acceptance boost",
+          "prediction_influence": "Prediction influence",
+          "learning_scope": "Learning scope",
+          "adaptive_retention_days": "Adaptive learning retention"
+        },
+        "data_description": {
+          "adaptive_learning": "Adds local sequence and feedback signals after the existing statistical score.",
+          "sequence_learning": "Learns which significant action tends to follow another.",
+          "sequence_window_minutes": "Only actions within this delay can form a transition.",
+          "sequence_influence": "Limits how strongly sequence evidence can affect a candidate.",
+          "minimum_transition_occurrences": "A transition has no effect until it reaches this support.",
+          "sequence_decay_days": "Older transitions progressively lose weight.",
+          "ignored_suggestion_learning": "Learns from suggestions that are repeatedly accepted or ignored.",
+          "suggestion_acceptance_window_minutes": "A matching action inside this window accepts a suggestion.",
+          "minimum_exposures": "No ignored-suggestion penalty is applied below this support.",
+          "ignored_suggestion_penalty": "Maximum strength of the moderate, recoverable penalty.",
+          "acceptance_boost": "Maximum boost for suggestions often selected in similar context.",
+          "prediction_influence": "Blends the adaptive target with the unchanged base score.",
+          "learning_scope": "Hybrid prefers supported user evidence and falls back to global data.",
+          "adaptive_retention_days": "Raw exposures and stale compact aggregates are removed after this period."
+        }
+      },
+      "adaptive_sources": {
+        "title": "Adaptive source weights",
+        "description": "Set how much each classified action source contributes to adaptive patterns.",
+        "data": {
+          "adaptive_weight_manual": "Manual UI weight",
+          "adaptive_weight_assist": "Assist weight",
+          "adaptive_weight_quick_access": "Quick Access weight",
+          "adaptive_weight_apple_watch": "Apple Watch weight",
+          "adaptive_weight_shortcut": "Shortcut weight",
+          "adaptive_weight_script": "Script weight",
+          "adaptive_weight_automation": "Automation weight",
+          "adaptive_weight_unknown": "Unknown-origin weight"
+        }
       }
     },
     "error": {
@@ -247,7 +299,8 @@
               "presence_habit": "Frequently used with the current presence",
               "context_habit": "Frequently used in the current home context",
               "area_habit": "Relevant to the currently occupied area",
-              "ai_selected": "Selected by AI reranking"
+              "ai_selected": "Selected by AI reranking",
+              "sequence_habit": "Often used after the recent action"
             }
           }
         }
@@ -475,6 +528,50 @@
         "60": "1 minute",
         "120": "2 minutes",
         "300": "5 minutes"
+      }
+    },
+    "sequence_window_minutes": {
+      "options": {
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min",
+        "60": "60 min",
+        "120": "120 min"
+      }
+    },
+    "sequence_decay_days": {
+      "options": {
+        "7": "7 days",
+        "14": "14 days",
+        "30": "30 days",
+        "60": "60 days",
+        "90": "90 days"
+      }
+    },
+    "suggestion_acceptance_window_minutes": {
+      "options": {
+        "2": "2 min",
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min"
+      }
+    },
+    "learning_scope": {
+      "options": {
+        "global": "Global",
+        "user": "Per user",
+        "hybrid": "Hybrid"
+      }
+    },
+    "adaptive_retention_days": {
+      "options": {
+        "30": "30 days",
+        "60": "60 days",
+        "90": "90 days",
+        "180": "180 days",
+        "365": "365 days"
       }
     }
   }

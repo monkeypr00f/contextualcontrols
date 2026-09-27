@@ -13,15 +13,15 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
-    if version not in (1, 2, 3, 4):
+    if version not in (1, 2, 3, 4, 5):
         raise ValueError("Unsupported storage version")
-    if version == 4:
+    if version == 5:
         return data
     rows = data.get("records", [])
     if version == 1:
         rows = [{"area_id": None, "confidence": 0.2, **row} for row in rows]
     source_map = {"user": "manual", "child": "unknown", "unknown": "unknown"}
-    return {
+    migrated: dict[str, Any] = {
         "records": [
             {
                 **row,
@@ -33,6 +33,10 @@ def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
             for row in rows
         ]
     }
+    if version == 4:
+        migrated["records"] = rows
+    migrated["adaptive"] = {"transitions": [], "exposures": [], "feedback": [], "metrics": {}}
+    return migrated
 
 
 def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
@@ -98,7 +102,7 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
     return records, rejected
 
 
-def encode(records: Iterable[Usage]) -> dict[str, Any]:
+def encode(records: Iterable[Usage], adaptive: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "records": [
             {
@@ -114,7 +118,8 @@ def encode(records: Iterable[Usage]) -> dict[str, Any]:
                 "source_detail": row.source_detail,
             }
             for row in records
-        ]
+        ],
+        "adaptive": adaptive or {"transitions": [], "exposures": [], "feedback": [], "metrics": {}},
     }
 
 

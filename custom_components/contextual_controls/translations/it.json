@@ -26,10 +26,10 @@
   },
   "options": {
     "step": {
-    "init": {
-      "title": "Configura Contextual Controls",
-      "description": "Apri e modifica qualsiasi sezione. Le modifiche restano in questa finestra finché scegli Salva e chiudi.",
-      "menu_options": {
+      "init": {
+        "title": "Configura Contextual Controls",
+        "description": "Apri e modifica qualsiasi sezione. Le modifiche restano in questa finestra finché scegli Salva e chiudi.",
+        "menu_options": {
           "general": "Generale",
           "entities": "Entità",
           "learning": "Apprendimento",
@@ -38,9 +38,11 @@
           "advanced": "Avanzate / Debug",
           "ai": "AI opzionale",
           "reset": "Reset apprendimento",
-        "quick_access": "Accesso rapido / Apple",
-        "save": "Salva e chiudi"
-      }
+          "quick_access": "Accesso rapido / Apple",
+          "save": "Salva e chiudi",
+          "adaptive": "Apprendimento adattivo",
+          "adaptive_sources": "Pesi origini adattive"
+        }
       },
       "general": {
         "title": "Generale",
@@ -219,6 +221,56 @@
           "quick_access_track_usage": "Gli utilizzi riusciti alimentano lo stesso apprendimento del ranking.",
           "quick_access_usage_weight": "Imposta la confidence degli utilizzi Quick Access da 0 a 100."
         }
+      },
+      "adaptive": {
+        "title": "Apprendimento adattivo",
+        "description": "Configura il livello locale e spiegabile che impara sequenze e utilità dei suggerimenti.",
+        "data": {
+          "adaptive_learning": "Abilita apprendimento adattivo",
+          "sequence_learning": "Abilita apprendimento sequenziale",
+          "sequence_window_minutes": "Finestra apprendimento sequenze",
+          "sequence_influence": "Influenza sequenze",
+          "minimum_transition_occurrences": "Occorrenze minime transizione",
+          "sequence_decay_days": "Decadimento memoria sequenze",
+          "ignored_suggestion_learning": "Impara dai suggerimenti ignorati",
+          "suggestion_acceptance_window_minutes": "Finestra accettazione suggerimento",
+          "minimum_exposures": "Esposizioni minime prima della penalità",
+          "ignored_suggestion_penalty": "Penalità suggerimenti ignorati",
+          "acceptance_boost": "Boost accettazione",
+          "prediction_influence": "Influenza previsione",
+          "learning_scope": "Ambito apprendimento",
+          "adaptive_retention_days": "Conservazione apprendimento adattivo"
+        },
+        "data_description": {
+          "adaptive_learning": "Aggiunge segnali locali di sequenza e feedback dopo il punteggio statistico esistente.",
+          "sequence_learning": "Impara quale azione significativa tende a seguirne un’altra.",
+          "sequence_window_minutes": "Solo le azioni entro questo intervallo possono formare una transizione.",
+          "sequence_influence": "Limita quanto l’evidenza sequenziale può influire su un candidato.",
+          "minimum_transition_occurrences": "Una transizione non ha effetto finché non raggiunge questo supporto.",
+          "sequence_decay_days": "Le transizioni più vecchie perdono peso gradualmente.",
+          "ignored_suggestion_learning": "Impara dai suggerimenti accettati o ignorati ripetutamente.",
+          "suggestion_acceptance_window_minutes": "Un’azione corrispondente entro questa finestra accetta il suggerimento.",
+          "minimum_exposures": "Sotto questa soglia non viene applicata alcuna penalità.",
+          "ignored_suggestion_penalty": "Forza massima della penalità moderata e recuperabile.",
+          "acceptance_boost": "Boost massimo per suggerimenti scelti spesso in un contesto simile.",
+          "prediction_influence": "Combina il target adattivo con il punteggio base invariato.",
+          "learning_scope": "Hybrid preferisce dati utente sufficienti e altrimenti usa quelli globali.",
+          "adaptive_retention_days": "Le esposizioni grezze e gli aggregati obsoleti vengono rimossi dopo questo periodo."
+        }
+      },
+      "adaptive_sources": {
+        "title": "Pesi origini adattive",
+        "description": "Imposta quanto ogni origine classificata contribuisce ai pattern adattivi.",
+        "data": {
+          "adaptive_weight_manual": "Peso UI manuale",
+          "adaptive_weight_assist": "Peso Assist",
+          "adaptive_weight_quick_access": "Peso Accesso rapido",
+          "adaptive_weight_apple_watch": "Peso Apple Watch",
+          "adaptive_weight_shortcut": "Peso Shortcut",
+          "adaptive_weight_script": "Peso script",
+          "adaptive_weight_automation": "Peso automazioni",
+          "adaptive_weight_unknown": "Peso origine sconosciuta"
+        }
       }
     },
     "error": {
@@ -247,7 +299,8 @@
               "presence_habit": "Usato spesso con la presenza attuale",
               "context_habit": "Usato spesso nel contesto attuale della casa",
               "area_habit": "Rilevante per l’area attualmente occupata",
-              "ai_selected": "Selezionato dal riordino AI"
+              "ai_selected": "Selezionato dal riordino AI",
+              "sequence_habit": "Usato spesso dopo l’azione recente"
             }
           }
         }
@@ -475,6 +528,50 @@
         "60": "1 minuto",
         "120": "2 minuti",
         "300": "5 minuti"
+      }
+    },
+    "sequence_window_minutes": {
+      "options": {
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min",
+        "60": "60 min",
+        "120": "120 min"
+      }
+    },
+    "sequence_decay_days": {
+      "options": {
+        "7": "7 giorni",
+        "14": "14 giorni",
+        "30": "30 giorni",
+        "60": "60 giorni",
+        "90": "90 giorni"
+      }
+    },
+    "suggestion_acceptance_window_minutes": {
+      "options": {
+        "2": "2 min",
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min"
+      }
+    },
+    "learning_scope": {
+      "options": {
+        "global": "Globale",
+        "user": "Per utente",
+        "hybrid": "Ibrido"
+      }
+    },
+    "adaptive_retention_days": {
+      "options": {
+        "30": "30 giorni",
+        "60": "60 giorni",
+        "90": "90 giorni",
+        "180": "180 giorni",
+        "365": "365 giorni"
       }
     }
   }

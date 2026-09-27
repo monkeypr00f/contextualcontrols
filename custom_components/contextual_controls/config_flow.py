@@ -11,6 +11,7 @@ from .const import (
     AI_PROVIDERS,
     DEFAULTS,
     DOMAIN,
+    LEARNING_SCOPES,
     LEARNING_SOURCES,
     MODES,
     NAME,
@@ -54,6 +55,32 @@ SECTIONS = {
         "quick_access_usage_weight",
     ),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
+    "adaptive": (
+        "adaptive_learning",
+        "sequence_learning",
+        "sequence_window_minutes",
+        "sequence_influence",
+        "minimum_transition_occurrences",
+        "sequence_decay_days",
+        "ignored_suggestion_learning",
+        "suggestion_acceptance_window_minutes",
+        "minimum_exposures",
+        "ignored_suggestion_penalty",
+        "acceptance_boost",
+        "prediction_influence",
+        "learning_scope",
+        "adaptive_retention_days",
+    ),
+    "adaptive_sources": (
+        "adaptive_weight_manual",
+        "adaptive_weight_assist",
+        "adaptive_weight_quick_access",
+        "adaptive_weight_apple_watch",
+        "adaptive_weight_shortcut",
+        "adaptive_weight_script",
+        "adaptive_weight_automation",
+        "adaptive_weight_unknown",
+    ),
 }
 AI_COMMON_FIELDS = (
     "ai_provider",
@@ -92,8 +119,21 @@ CHOICES = {
     "cold_start": ["pinned", "recent", "frequent", "domains"],
     "quick_access_safety_mode": QUICK_ACCESS_SAFETY_MODES,
     "quick_access_stability": QUICK_ACCESS_STABILITY,
+    "sequence_window_minutes": ["5", "10", "15", "30", "60", "120"],
+    "sequence_decay_days": ["7", "14", "30", "60", "90"],
+    "suggestion_acceptance_window_minutes": ["2", "5", "10", "15", "30"],
+    "learning_scope": LEARNING_SCOPES,
+    "adaptive_retention_days": ["30", "60", "90", "180", "365"],
 }
-NUMERIC_CHOICES = {"learning_period_days", "time_window_minutes", "refresh_minutes"}
+NUMERIC_CHOICES = {
+    "learning_period_days",
+    "time_window_minutes",
+    "refresh_minutes",
+    "sequence_window_minutes",
+    "sequence_decay_days",
+    "suggestion_acceptance_window_minutes",
+    "adaptive_retention_days",
+}
 MULTIPLE_CHOICES = {"included_domains", "excluded_domains", "learn_sources"}
 ENTITY_FIELDS = {
     "included_entities",
@@ -121,6 +161,9 @@ BOOLEAN_FIELDS = {
     "quick_access_enabled",
     "quick_access_response",
     "quick_access_track_usage",
+    "adaptive_learning",
+    "sequence_learning",
+    "ignored_suggestion_learning",
 }
 TEXT_FIELDS = {"ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id"}
 NUMBER_RANGES = {
@@ -133,6 +176,20 @@ NUMBER_RANGES = {
     "ai_temperature": (0, 1, 0.1),
     "quick_access_slots": (1, 10, 1),
     "quick_access_usage_weight": (0, 100, 1),
+    "sequence_influence": (0, 100, 1),
+    "minimum_transition_occurrences": (2, 10, 1),
+    "minimum_exposures": (3, 20, 1),
+    "ignored_suggestion_penalty": (0, 100, 1),
+    "acceptance_boost": (0, 100, 1),
+    "prediction_influence": (0, 100, 1),
+    "adaptive_weight_manual": (0, 100, 1),
+    "adaptive_weight_assist": (0, 100, 1),
+    "adaptive_weight_quick_access": (0, 100, 1),
+    "adaptive_weight_apple_watch": (0, 100, 1),
+    "adaptive_weight_shortcut": (0, 100, 1),
+    "adaptive_weight_script": (0, 100, 1),
+    "adaptive_weight_automation": (0, 100, 1),
+    "adaptive_weight_unknown": (0, 100, 1),
 }
 
 
@@ -200,6 +257,20 @@ def normalize(values):
             "ai_timeout_seconds",
             "quick_access_slots",
             "quick_access_usage_weight",
+            "sequence_influence",
+            "minimum_transition_occurrences",
+            "minimum_exposures",
+            "ignored_suggestion_penalty",
+            "acceptance_boost",
+            "prediction_influence",
+            "adaptive_weight_manual",
+            "adaptive_weight_assist",
+            "adaptive_weight_quick_access",
+            "adaptive_weight_apple_watch",
+            "adaptive_weight_shortcut",
+            "adaptive_weight_script",
+            "adaptive_weight_automation",
+            "adaptive_weight_unknown",
         )
         else value
         for key, value in values.items()
@@ -207,7 +278,7 @@ def normalize(values):
 
 
 class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 3
+    VERSION = 4
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
@@ -313,6 +384,12 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_advanced(self, user_input=None):
         return await self._section("advanced", user_input)
+
+    async def async_step_adaptive(self, user_input=None):
+        return await self._section("adaptive", user_input)
+
+    async def async_step_adaptive_sources(self, user_input=None):
+        return await self._section("adaptive_sources", user_input)
 
     async def async_step_ai(self, user_input=None):
         self._ensure_draft()

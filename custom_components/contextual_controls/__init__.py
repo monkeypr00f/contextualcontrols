@@ -4,10 +4,10 @@ from .const import DOMAIN
 
 
 async def async_migrate_entry(hass, entry):
-    """Migrate old source names and populate defaults through Phase 3."""
-    if entry.version > 3:
+    """Migrate old source names and populate current option defaults."""
+    if entry.version > 4:
         return False
-    if entry.version < 3:
+    if entry.version < 4:
         from copy import deepcopy
 
         from .const import DEFAULTS
@@ -18,7 +18,7 @@ async def async_migrate_entry(hass, entry):
             options["learn_sources"] = list(
                 dict.fromkeys(source_map.get(source, source) for source in options["learn_sources"])
             )
-        hass.config_entries.async_update_entry(entry, options=options, version=3)
+        hass.config_entries.async_update_entry(entry, options=options, version=4)
     return True
 
 

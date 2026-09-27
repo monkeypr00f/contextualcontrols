@@ -27,6 +27,7 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .adaptive import AdaptiveSettings
 from .ai import (
     AIManager,
     AIReranker,
@@ -114,6 +115,33 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if provider_name == "disabled":
             return
         self._ai_status = "ready"
+
+    def _adaptive_settings(self) -> AdaptiveSettings:
+        source_weights = {
+            name: float(self.options[f"adaptive_weight_{name}"]) / 100
+            for name in (
+                "manual",
+                "assist",
+                "quick_access",
+                "apple_watch",
+                "shortcut",
+                "script",
+                "automation",
+                "unknown",
+            )
+        }
+        return AdaptiveSettings(
+            enabled=self.options["adaptive_learning"],
+            sequence_enabled=self.options["sequence_learning"],
+            sequence_window_minutes=int(self.options["sequence_window_minutes"]),
+            sequence_influence=float(self.options["sequence_influence"]),
+            minimum_transition_occurrences=int(self.options["minimum_transition_occurrences"]),
+            sequence_decay_days=int(self.options["sequence_decay_days"]),
+            prediction_influence=float(self.options["prediction_influence"]),
+            learning_scope=self.options["learning_scope"],
+            retention_days=int(self.options["adaptive_retention_days"]),
+            source_weights=source_weights,
+        )
 
     def _ensure_ai_manager(self) -> None:
         if self._ai_manager is not None or self.options["ai_provider"] == "disabled":
@@ -268,18 +296,22 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 continue
             if self._dedup.accept(event.context.id, entity_id, action, now.timestamp()):
-                self.history.append(
-                    Usage(
-                        now,
-                        entity_id,
-                        event.context.user_id,
-                        source,
-                        action,
-                        confidence,
-                        self.areas.get(entity_id),
-                        presence,
-                        context,
-                    )
+                record = Usage(
+                    now,
+                    entity_id,
+                    event.context.user_id,
+                    source,
+                    action,
+                    confidence,
+                    self.areas.get(entity_id),
+                    presence,
+                    context,
+                )
+                self.history.append(record)
+                self.history.learning.record_action(
+                    record,
+                    self._adaptive_settings(),
+                    local_timestamp=dt_util.as_local(record.timestamp),
                 )
                 self._request()
 
@@ -289,6 +321,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.now()
         presence, context, active_areas = self._signal_snapshot()
         self.history.prune(now)
+        adaptive_settings = self._adaptive_settings()
+        self.history.learning.cleanup(now, adaptive_settings.retention_days)
         self.history.schedule_save()
         candidates = {
             entity_id: Candidate(entity_id, state.state, self.areas.get(entity_id))
@@ -328,6 +362,14 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             ranked = await self.hass.async_add_executor_job(
                 rank, tuple(candidates.values()), tuple(self.history.records), now, settings
+            )
+            ranked = await self.hass.async_add_executor_job(
+                self.history.learning.apply_sequence,
+                ranked,
+                now,
+                adaptive_settings,
+                self.options["user_id"] or None,
+                presence,
             )
             if (
                 self.options["ai_provider"] != "disabled"
@@ -413,6 +455,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {
                     "entity_id": item.entity_id,
                     "score": item.score,
+                    "base_score": item.base_score or item.score,
+                    "sequence_score": item.sequence_score,
                     "reason": self._translations.get(key, item.reason_key),
                     "source": item.source,
                     "rank": index,
@@ -461,6 +505,9 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "presence": item.presence,
                     "area": item.area,
                     "context": item.context,
+                    "base": item.base_score or item.score,
+                    "sequence": item.sequence_score,
+                    "adaptive_confidence": item.adaptive_confidence,
                     "final": item.score,
                 }
                 for item in ranked[:30]
@@ -599,19 +646,23 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.options["quick_access_track_usage"]:
                 now = dt_util.utcnow()
                 presence, context_states, _active_areas = self._signal_snapshot()
-                self.history.append(
-                    Usage(
-                        now,
-                        entity_id,
-                        context.user_id,
-                        "quick_access",
-                        action.service,
-                        float(self.options["quick_access_usage_weight"]) / 100,
-                        self.areas.get(entity_id),
-                        presence,
-                        context_states,
-                        source if source in QUICK_ACCESS_SOURCES else "unknown",
-                    )
+                record = Usage(
+                    now,
+                    entity_id,
+                    context.user_id,
+                    "quick_access",
+                    action.service,
+                    float(self.options["quick_access_usage_weight"]) / 100,
+                    self.areas.get(entity_id),
+                    presence,
+                    context_states,
+                    source if source in QUICK_ACCESS_SOURCES else "unknown",
+                )
+                self.history.append(record)
+                self.history.learning.record_action(
+                    record,
+                    self._adaptive_settings(),
+                    local_timestamp=dt_util.as_local(record.timestamp),
                 )
                 self._request()
             self.quick_access_executions += 1
