@@ -16,3 +16,60 @@ reset_learning:
       default: false
       selector:
         boolean: {}
+
+get_slot:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: contextual_controls
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+
+execute_slot:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: contextual_controls
+    slot:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box
+    expected_entity_id:
+      selector:
+        entity: {}
+    mode:
+      required: true
+      default: automatic
+      selector:
+        select:
+          options:
+            - automatic
+            - more_info
+            - execute
+    confirmed:
+      required: true
+      default: false
+      selector:
+        boolean: {}
+    source:
+      required: true
+      default: unknown
+      selector:
+        select:
+          options:
+            - apple_watch
+            - ios_lock_screen
+            - shortcut
+            - action_button
+            - control_center
+            - unknown

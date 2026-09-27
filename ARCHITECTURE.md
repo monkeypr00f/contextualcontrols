@@ -95,8 +95,9 @@ Explicit exclusions (entity/domain/area) always win, including over pinned IDs.
 Inclusion is explicit IDs OR enabled domains, filtered by selected areas;
 pinned IDs are explicit inclusion but obey the same area/exclusion policy.
 Entity area overrides device area. Unsupported domains and disabled registry
-entities are excluded. Lock is opt-in by explicit entity selection; alarm and
-siren are unsupported in Phase 1. No entity is ever executed by this integration.
+entities are excluded. Lock, alarm and siren are opt-in by explicit entity
+selection. Device actions occur only through a card tap or the public
+`execute_slot` action and are never autonomous.
 Unavailable/unknown ordinary controls are hidden, including pins; scenes and
 buttons may have an `unknown` timestamp state before first use and remain valid.
 
@@ -201,6 +202,70 @@ context entities. Raw history and user IDs are never serialized. Cache keys are
 derived from the authorized prompt payload. Identical context reuses the last
 result; changed context is rate-limited by the configured 5–120 minute minimum
 AI interval and uses the statistical fallback while throttled.
+
+## Apple Quick Access
+
+Verified against the current public Home Assistant Companion documentation on
+2026-09-26. A HACS integration cannot install an iOS/watchOS widget, App Intent,
+Shortcut, complication, or Apple Watch item. Contextual Controls therefore
+provides a server-side bridge to surfaces already implemented by the Companion
+App:
+
+- Apple App Intents `Perform action` can call any Home Assistant action and can
+  receive action response data. It is the primary direct bridge for Shortcuts,
+  Siri, Action Button, Control Center and the Shortcuts Apple Watch app.
+- The Companion Apple Watch Home screen accepts user-selected Scripts, Scenes
+  and iOS Actions. Static script wrappers can call a dynamic slot, but their
+  Watch label and icon remain static. A custom integration has no public API to
+  insert or rename these Watch items dynamically.
+- The iOS Scripts and Open Page widgets support an accessory circular Lock
+  Screen presentation. Details and Gauge can display templated data. The Custom
+  Widget Beta supports System sizes only, not accessory Lock Screen sizes, and
+  its refresh is controlled by iOS rather than being real time.
+- Live Activities are state displays updated by notifications. Their documented
+  tap opens the Companion App or a configured URL; they do not expose the
+  required dynamic action-button grid and are not used as the control surface.
+- Watch complications can render sensor templates, but updates are budgeted and
+  they are a display/launch surface rather than a dynamic six-button API.
+
+Sources: [Apple App Intents](https://companion.home-assistant.io/docs/integrations/siri-shortcuts/),
+[Apple Watch](https://companion.home-assistant.io/docs/apple-watch/),
+[complications](https://companion.home-assistant.io/docs/apple-watch/complications/),
+[iOS widgets](https://companion.home-assistant.io/docs/integrations/ios-widgets/),
+and [Live Activities](https://companion.home-assistant.io/docs/notifications/live-activities/).
+
+The coordinator's already selected `entities` rows remain the only ranking
+source. `SlotManager` snapshots those rows in memory; it never scores, reads
+history, or calls an AI provider. Each configured slot is exposed as a stable
+sensor and carries target ID, name, icon, state, score, reason, recommended
+action, generation and update time. Slot entities read only coordinator memory.
+
+Ranking changes pass through a configurable 0/30/60/120/300-second stability
+window. A still-valid published target remains in its slot during that window;
+unavailable, removed or newly forbidden targets are replaced immediately.
+Every target-map change increments a generation. Clients that first call
+`get_slot` can pass its `entity_id` as `expected_entity_id` to `execute_slot`;
+any mismatch fails with `stale_slot` before a device action is called. Execution
+is serialized per config entry and uses the captured snapshot, so concurrent
+refreshes cannot redirect an in-flight tap.
+
+`get_slot` is response-only. `execute_slot` supports optional response data and
+uses public `hass.services.async_call` with the caller Context. Automatic action
+resolution is centralized and conservative: toggles for lights/switches/fans
+and input booleans; activation for scenes/scripts; press for buttons; open or
+close only for unambiguous cover states; media play/pause only when advertised;
+climate, locks, alarms, sirens, vacuums and ambiguous states require the app or
+an explicitly designed future action. Safe/Balanced/Direct policy and an
+explicit sensitive-entity list are enforced after resolution and before the
+service call. Confirmation never invents an otherwise unsupported command.
+
+Successful quick-access execution records one `quick_access` Usage entry with
+the optional, allowlisted source detail and configured confidence weight. Its
+nested Home Assistant service event is suppressed from normal ingestion to
+avoid double learning. The tap path uses cached coordinator data only: no AI,
+history query or ranking refresh is performed. Slot snapshots are intentionally
+ephemeral across integration reloads; retained learning is persistent, while a
+new process safely publishes a fresh generation before accepting a tap.
 
 ## Verification policy
 

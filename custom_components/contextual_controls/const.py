@@ -1,9 +1,9 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.5.2"
+VERSION = "0.6.0"
 NAME = "Contextual Controls"
-STORAGE_VERSION = 3
+STORAGE_VERSION = 4
 MAX_RECORDS = 50_000
 RETENTION_DAYS = 90
 DEFAULT_DOMAINS = ["light", "switch", "cover", "climate", "media_player", "scene", "script"]
@@ -11,10 +11,13 @@ SUPPORTED_DOMAINS = DEFAULT_DOMAINS + [
     "fan",
     "lock",
     "button",
+    "input_button",
     "input_boolean",
     "vacuum",
     "select",
     "number",
+    "alarm_control_panel",
+    "siren",
 ]
 DEFAULTS = {
     "mode": "hybrid",
@@ -61,9 +64,19 @@ DEFAULTS = {
     "ai_share_exact_timestamps": False,
     "ai_share_presence_information": False,
     "ai_share_context_entities": True,
+    "quick_access_enabled": True,
+    "quick_access_slots": 6,
+    "quick_access_safety_mode": "safe",
+    "quick_access_stability": "120",
+    "quick_access_sensitive_entities": [],
+    "quick_access_response": True,
+    "quick_access_track_usage": True,
+    "quick_access_usage_weight": 100,
 }
 
 PRESENCE_DOMAINS = ["person", "device_tracker", "binary_sensor"]
 LEARNING_SOURCES = ["manual", "assist", "automation", "script", "unknown"]
 AI_PROVIDERS = ["disabled", "ollama", "openai_compatible"]
 MODES = ["hybrid", "statistical", "ai_assisted"]
+QUICK_ACCESS_SAFETY_MODES = ["safe", "balanced", "direct"]
+QUICK_ACCESS_STABILITY = ["0", "30", "60", "120", "300"]

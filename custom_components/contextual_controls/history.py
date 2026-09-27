@@ -13,9 +13,9 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
-    if version not in (1, 2, 3):
+    if version not in (1, 2, 3, 4):
         raise ValueError("Unsupported storage version")
-    if version == 3:
+    if version == 4:
         return data
     rows = data.get("records", [])
     if version == 1:
@@ -26,8 +26,9 @@ def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
             {
                 **row,
                 "source": source_map.get(row.get("source"), row.get("source", "unknown")),
-                "presence_home": None,
-                "context_states": [],
+                "presence_home": None if version < 3 else row.get("presence_home"),
+                "context_states": [] if version < 3 else row.get("context_states", []),
+                "source_detail": None,
             }
             for row in rows
         ]
@@ -49,7 +50,8 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                 or not ENTITY_ID.fullmatch(row["entity_id"])
                 or not math.isfinite(confidence)
                 or not 0 <= confidence <= 1
-                or row["source"] not in ("manual", "assist", "automation", "script", "unknown")
+                or row["source"]
+                not in ("manual", "assist", "automation", "script", "unknown", "quick_access")
                 or not isinstance(row["action"], str)
                 or row.get("user_id") is not None
                 and not isinstance(row["user_id"], str)
@@ -57,6 +59,16 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                 and not isinstance(row["area_id"], str)
                 or row.get("presence_home") is not None
                 and not isinstance(row["presence_home"], bool)
+                or row.get("source_detail") is not None
+                and row.get("source_detail")
+                not in (
+                    "apple_watch",
+                    "ios_lock_screen",
+                    "shortcut",
+                    "action_button",
+                    "control_center",
+                    "unknown",
+                )
             ):
                 raise ValueError("Invalid record")
             context_states = row.get("context_states", [])
@@ -78,6 +90,7 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                     row.get("area_id"),
                     row.get("presence_home"),
                     tuple((item[0], item[1]) for item in context_states),
+                    row.get("source_detail"),
                 )
             )
         except KeyError, TypeError, ValueError, OverflowError:
@@ -98,6 +111,7 @@ def encode(records: Iterable[Usage]) -> dict[str, Any]:
                 "area_id": row.area_id,
                 "presence_home": row.presence_home,
                 "context_states": [list(item) for item in row.context_states],
+                "source_detail": row.source_detail,
             }
             for row in records
         ]

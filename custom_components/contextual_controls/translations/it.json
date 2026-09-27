@@ -36,7 +36,8 @@
           "dashboard": "Dashboard",
           "advanced": "Avanzate / Debug",
           "ai": "AI opzionale",
-          "reset": "Reset apprendimento"
+          "reset": "Reset apprendimento",
+          "quick_access": "Accesso rapido / Apple"
         }
       },
       "general": {
@@ -193,6 +194,29 @@
           "openai_endpoint": "URL base o URL completo /v1/chat/completions.",
           "api_key": "Lascia vuoto per conservare la chiave esistente. Viene salvata nei dati protetti della ConfigEntry."
         }
+      },
+      "quick_access": {
+        "title": "Accesso rapido / Apple",
+        "description": "Espone slot stabili per Shortcuts, Apple Watch e Lock Screen senza ricalcolare il ranking.",
+        "data": {
+          "quick_access_enabled": "Abilita accesso rapido",
+          "quick_access_slots": "Numero di slot",
+          "quick_access_safety_mode": "Modalità di sicurezza",
+          "quick_access_stability": "Stabilità degli slot",
+          "quick_access_sensitive_entities": "Entità sensibili",
+          "quick_access_response": "Abilita risposta dell'azione",
+          "quick_access_track_usage": "Registra utilizzi accesso rapido",
+          "quick_access_usage_weight": "Peso utilizzi accesso rapido"
+        },
+        "data_description": {
+          "quick_access_slots": "Crea da 1 a 10 sensori slot con entity_id stabile.",
+          "quick_access_safety_mode": "Safe blocca le entità sensibili; Balanced consente i controlli comuni; Direct richiede comunque conferma per le entità sensibili.",
+          "quick_access_stability": "Mantiene temporaneamente il target pubblicato per evitare che cambi tra visualizzazione e tocco.",
+          "quick_access_sensitive_entities": "Queste entità seguono sempre la policy sensibile, indipendentemente dal dominio.",
+          "quick_access_response": "Permette a Shortcuts di ricevere il risultato JSON di execute_slot.",
+          "quick_access_track_usage": "Gli utilizzi riusciti alimentano lo stesso apprendimento del ranking.",
+          "quick_access_usage_weight": "Imposta la confidence degli utilizzi Quick Access da 0 a 100."
+        }
       }
     },
     "error": {
@@ -200,7 +224,8 @@
       "confirmation_required": "Conferma il reset prima di continuare.",
       "entry_not_loaded": "Questa istanza deve essere caricata.",
       "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa.",
-      "api_key_required": "Inserisci una API key."
+      "api_key_required": "Inserisci una API key.",
+      "entry_required": "Scegli un'istanza quando ne è configurata più di una."
     }
   },
   "entity": {
@@ -224,6 +249,9 @@
             }
           }
         }
+      },
+      "quick_access_slot": {
+        "name": "Controllo contestuale {slot}"
       }
     }
   },
@@ -239,6 +267,9 @@
     },
     "storage_unavailable": {
       "message": "Impossibile caricare lo storico. Ripristina un backup o controlla i registri."
+    },
+    "entry_required": {
+      "message": "Scegli un'istanza quando ne è configurata più di una."
     }
   },
   "services": {
@@ -260,6 +291,47 @@
         "confirm": {
           "name": "Conferma reset apprendimento",
           "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+        }
+      }
+    },
+    "get_slot": {
+      "name": "Leggi slot",
+      "description": "Restituisce il target attuale senza eseguire azioni.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Istanza integrazione"
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Numero dello slot da 1 a 10."
+        }
+      }
+    },
+    "execute_slot": {
+      "name": "Esegui slot",
+      "description": "Esegue in sicurezza il target già pubblicato nello slot.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Istanza integrazione"
+        },
+        "slot": {
+          "name": "Slot",
+          "description": "Numero dello slot da 1 a 10."
+        },
+        "expected_entity_id": {
+          "name": "Entità attesa",
+          "description": "Rifiuta l'esecuzione se il target dello slot è cambiato."
+        },
+        "mode": {
+          "name": "Modalità"
+        },
+        "confirmed": {
+          "name": "Confermato",
+          "description": "Usare solo dopo una conferma esplicita dell'utente."
+        },
+        "source": {
+          "name": "Origine",
+          "description": "Usata solo per apprendimento e diagnostica."
         }
       }
     }
@@ -346,7 +418,10 @@
         "input_boolean": "input_boolean",
         "vacuum": "vacuum",
         "select": "select",
-        "number": "number"
+        "number": "number",
+        "input_button": "input_button",
+        "alarm_control_panel": "alarm_control_panel",
+        "siren": "siren"
       }
     },
     "excluded_domains": {
@@ -364,7 +439,10 @@
         "input_boolean": "input_boolean",
         "vacuum": "vacuum",
         "select": "select",
-        "number": "number"
+        "number": "number",
+        "input_button": "input_button",
+        "alarm_control_panel": "alarm_control_panel",
+        "siren": "siren"
       }
     },
     "mode": {
@@ -379,6 +457,22 @@
         "disabled": "Disabilitato",
         "ollama": "Ollama",
         "openai_compatible": "OpenAI-compatible"
+      }
+    },
+    "quick_access_safety_mode": {
+      "options": {
+        "safe": "Sicura",
+        "balanced": "Bilanciata",
+        "direct": "Diretta"
+      }
+    },
+    "quick_access_stability": {
+      "options": {
+        "0": "Immediata",
+        "30": "30 secondi",
+        "60": "1 minuto",
+        "120": "2 minuti",
+        "300": "5 minuti"
       }
     }
   }

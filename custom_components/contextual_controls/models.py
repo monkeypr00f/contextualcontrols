@@ -15,6 +15,7 @@ class Usage:
     area_id: str | None = None
     presence_home: bool | None = None
     context_states: tuple[tuple[str, str], ...] = ()
+    source_detail: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

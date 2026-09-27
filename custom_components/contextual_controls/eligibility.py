@@ -21,7 +21,7 @@ def eligible(candidate: Candidate, options: Mapping[str, Any]) -> bool:
         return False
     if not options["all_areas"] and candidate.area_id not in options["included_areas"]:
         return False
-    if domain == "lock" and not explicit:
+    if domain in {"lock", "alarm_control_panel", "siren"} and not explicit:
         return False
     return explicit or domain in options["included_domains"]
 
@@ -29,7 +29,11 @@ def eligible(candidate: Candidate, options: Mapping[str, Any]) -> bool:
 def available(candidate: Candidate) -> bool:
     if candidate.state == "unavailable":
         return False
-    return candidate.state != "unknown" or candidate.entity_id.split(".")[0] in {"scene", "button"}
+    return candidate.state != "unknown" or candidate.entity_id.split(".")[0] in {
+        "scene",
+        "button",
+        "input_button",
+    }
 
 
 def compose(
