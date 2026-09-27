@@ -302,6 +302,17 @@ class LearningEngine:
         self.exposures: list[Exposure] = []
         self.feedback: dict[tuple[str, str, str], FeedbackStat] = {}
         self.generation = 0
+        self.metrics: dict[str, int] = {
+            "total_suggestions": 0,
+            "accepted_suggestions": 0,
+            "ignored_suggestions": 0,
+            "prediction_windows": 0,
+            "top1_hits": 0,
+            "top3_hits": 0,
+            "base_top3_hits": 0,
+            "adaptive_top3_hits": 0,
+        }
+        self.last_learning_update: datetime | None = None
         self._last_exposure_fingerprint: tuple[tuple[str, ...], str, str | None] | None = None
         self._last_exposure_at: datetime | None = None
         self.rejected = 0
@@ -341,6 +352,20 @@ class LearningEngine:
                 ] = feedback_stat
             except KeyError, TypeError, ValueError, OverflowError:
                 self.rejected += 1
+        metrics = data.get("metrics", {})
+        if isinstance(metrics, dict):
+            for key in self.metrics:
+                try:
+                    self.metrics[key] = max(0, int(metrics.get(key, 0)))
+                except TypeError, ValueError, OverflowError:
+                    self.rejected += 1
+            if metrics.get("last_learning_update"):
+                try:
+                    self.last_learning_update = datetime.fromisoformat(
+                        metrics["last_learning_update"]
+                    )
+                except TypeError, ValueError:
+                    self.rejected += 1
 
     def export(self) -> dict[str, Any]:
         return {
@@ -353,7 +378,12 @@ class LearningEngine:
                 stat.to_dict()
                 for _key, stat in sorted(self.feedback.items(), key=lambda item: item[0])
             ],
-            "metrics": {},
+            "metrics": {
+                **self.metrics,
+                "last_learning_update": self.last_learning_update.isoformat()
+                if self.last_learning_update
+                else None,
+            },
         }
 
     @staticmethod
@@ -396,6 +426,7 @@ class LearningEngine:
                     stat.observe(delay, weight, moment, record.presence_home)
         recent.append(record)
         self._latest_action = record
+        self.last_learning_update = record.timestamp
 
     @staticmethod
     def _distribution_similarity(mapping: dict[str, float], key: str) -> float:
@@ -520,8 +551,10 @@ class LearningEngine:
                     user_id=user_id,
                 )
             )
+            self.metrics["total_suggestions"] += 1
         self._last_exposure_fingerprint = fingerprint
         self._last_exposure_at = now
+        self.last_learning_update = now
         return self.generation
 
     def _observe_feedback(self, exposure: Exposure, accepted: bool, moment: datetime) -> None:
@@ -543,11 +576,23 @@ class LearningEngine:
     def _expire_exposures(self, now: datetime, settings: AdaptiveSettings) -> int:
         cutoff = now - timedelta(minutes=settings.acceptance_window_minutes)
         expired = 0
+        expired_generations: set[int] = set()
         for exposure in self.exposures:
             if not exposure.resolved and exposure.timestamp <= cutoff:
                 exposure.resolved = True
                 self._observe_feedback(exposure, False, now)
+                self.metrics["ignored_suggestions"] += 1
+                if not exposure.metric_counted:
+                    expired_generations.add(exposure.generation_id)
                 expired += 1
+        for generation in expired_generations:
+            rows = [row for row in self.exposures if row.generation_id == generation]
+            if rows and not any(row.metric_counted for row in rows):
+                self.metrics["prediction_windows"] += 1
+                for row in rows:
+                    row.metric_counted = True
+        if expired:
+            self.last_learning_update = now
         return expired
 
     def resolve_exposure(
@@ -580,6 +625,19 @@ class LearningEngine:
         if exposure.user_id is None and record.user_id:
             exposure.user_id = record.user_id
         self._observe_feedback(exposure, True, moment)
+        self.metrics["accepted_suggestions"] += 1
+        generation_rows = [
+            row for row in self.exposures if row.generation_id == exposure.generation_id
+        ]
+        if not any(row.metric_counted for row in generation_rows):
+            self.metrics["prediction_windows"] += 1
+            self.metrics["top1_hits"] += exposure.rank == 1
+            self.metrics["top3_hits"] += exposure.rank <= 3
+            self.metrics["base_top3_hits"] += 0 < exposure.base_rank <= 3
+            self.metrics["adaptive_top3_hits"] += 0 < exposure.adaptive_rank <= 3
+            for row in generation_rows:
+                row.metric_counted = True
+        self.last_learning_update = moment
         return 1
 
     def _select_feedback(
@@ -745,7 +803,54 @@ class LearningEngine:
             "suggestion_exposures": len(self.exposures),
             "feedback_patterns": len(self.feedback),
             "adaptive_rejected_records": self.rejected,
+            **self.metrics_snapshot(),
         }
+
+    def metrics_snapshot(self) -> dict[str, Any]:
+        windows = self.metrics["prediction_windows"]
+        total = self.metrics["total_suggestions"]
+        learning_evidence = sum(stat.count for stat in self.transitions.values()) + sum(
+            stat.exposures for stat in self.feedback.values() if stat.context_hash == "*"
+        )
+        return {
+            **self.metrics,
+            "top1_hit_rate": round(self.metrics["top1_hits"] / windows, 4) if windows else 0.0,
+            "top3_hit_rate": round(self.metrics["top3_hits"] / windows, 4) if windows else 0.0,
+            "base_top3_hit_rate": round(self.metrics["base_top3_hits"] / windows, 4)
+            if windows
+            else 0.0,
+            "adaptive_top3_hit_rate": round(self.metrics["adaptive_top3_hits"] / windows, 4)
+            if windows
+            else 0.0,
+            "accepted_rate": round(self.metrics["accepted_suggestions"] / total, 4)
+            if total
+            else 0.0,
+            "learning_confidence": round(1 - math.exp(-learning_evidence / 20), 4),
+            "last_learning_update": self.last_learning_update.isoformat()
+            if self.last_learning_update
+            else None,
+        }
+
+    @staticmethod
+    def get_predictive_score(
+        base_score: float,
+        sequence_score: float,
+        acceptance_score: float,
+        ignore_penalty: float,
+        settings: AdaptiveSettings,
+    ) -> float:
+        sequence_weight = max(0.0, min(1.0, settings.sequence_influence / 100))
+        acceptance_weight = max(0.0, min(1.0, settings.acceptance_boost / 100))
+        penalty_weight = max(0.0, min(1.0, settings.ignored_penalty_strength / 100))
+        prediction_weight = max(0.0, min(1.0, settings.prediction_influence / 100))
+        target = (
+            base_score
+            + sequence_weight * sequence_score * (1 - base_score)
+            + acceptance_weight * acceptance_score * (1 - base_score)
+            - penalty_weight * ignore_penalty * base_score
+        )
+        target = max(0.0, min(1.0, target))
+        return round(max(0.0, min(1.0, base_score + prediction_weight * (target - base_score))), 4)
 
     def apply_adaptive(
         self,
@@ -759,10 +864,6 @@ class LearningEngine:
         """Blend bounded sequence and feedback signals after the base scorer."""
         if not settings.enabled:
             return [replace(item, base_score=item.score) for item in ranked]
-        prediction_weight = max(0.0, min(1.0, settings.prediction_influence / 100))
-        sequence_weight = max(0.0, min(1.0, settings.sequence_influence / 100))
-        acceptance_weight = max(0.0, min(1.0, settings.acceptance_boost / 100))
-        penalty_weight = max(0.0, min(1.0, settings.ignored_penalty_strength / 100))
         result: list[Ranked] = []
         for item in ranked:
             signal = self.get_sequence_score(
@@ -773,13 +874,13 @@ class LearningEngine:
                 presence_home=presence_home,
             )
             feedback = self.feedback_signal(item.entity_id, context_hash, settings, user_id=user_id)
-            target = (
-                item.score
-                + sequence_weight * signal.score * (1 - item.score)
-                + acceptance_weight * feedback.acceptance_score * (1 - item.score)
-                - penalty_weight * feedback.ignore_penalty * item.score
+            final = self.get_predictive_score(
+                item.score,
+                signal.score,
+                feedback.acceptance_score,
+                feedback.ignore_penalty,
+                settings,
             )
-            final = item.score + prediction_weight * (min(1.0, target) - item.score)
             reason = (
                 "sequence_habit"
                 if signal.score > 0.25
@@ -790,7 +891,7 @@ class LearningEngine:
             result.append(
                 replace(
                     item,
-                    score=round(max(0.0, min(1.0, final)), 4),
+                    score=final,
                     reason_key=reason,
                     source=(
                         "adaptive"

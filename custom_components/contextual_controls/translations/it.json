@@ -308,6 +308,9 @@
       },
       "quick_access_slot": {
         "name": "Controllo contestuale {slot}"
+      },
+      "adaptive_learning": {
+        "name": "Confidenza apprendimento adattivo"
       }
     }
   },

@@ -8,7 +8,10 @@ from .const import DOMAIN, NAME, VERSION
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    entities = [ContextualSensor(entry.runtime_data, entry)]
+    entities = [
+        ContextualSensor(entry.runtime_data, entry),
+        AdaptiveLearningSensor(entry.runtime_data, entry),
+    ]
     if entry.runtime_data.options["quick_access_enabled"]:
         entities.extend(
             QuickAccessSlotSensor(entry.runtime_data, entry, slot)
@@ -109,4 +112,57 @@ class QuickAccessSlotSensor(CoordinatorEntity, SensorEntity):
             "available": bool(data.get("available")),
             "slot_generation_id": data.get("slot_generation_id"),
             "last_changed_target": data.get("slot_updated_at"),
+        }
+
+
+class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
+    """Disabled-by-default aggregate diagnostics without personal identifiers."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "adaptive_learning"
+    _attr_icon = "mdi:brain"
+    _attr_entity_registry_enabled_default = False
+    _unrecorded_attributes = frozenset(
+        {
+            "top1_hit_rate",
+            "top3_hit_rate",
+            "base_top3_hit_rate",
+            "adaptive_top3_hit_rate",
+            "accepted_rate",
+            "sequence_patterns",
+            "learning_records",
+        }
+    )
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_adaptive_learning"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer=NAME,
+            model=NAME,
+            sw_version=VERSION,
+        )
+
+    @property
+    def native_value(self):
+        return round(
+            self.coordinator.history.learning.metrics_snapshot()["learning_confidence"] * 100,
+            1,
+        )
+
+    @property
+    def extra_state_attributes(self):
+        metrics = self.coordinator.history.learning.metrics_snapshot()
+        return {
+            "top1_hit_rate": metrics["top1_hit_rate"],
+            "top3_hit_rate": metrics["top3_hit_rate"],
+            "base_top3_hit_rate": metrics["base_top3_hit_rate"],
+            "adaptive_top3_hit_rate": metrics["adaptive_top3_hit_rate"],
+            "accepted_rate": metrics["accepted_rate"],
+            "sequence_patterns": len(self.coordinator.history.learning.transitions),
+            "learning_records": len(self.coordinator.history.records),
+            "learning_confidence": metrics["learning_confidence"],
+            "last_learning_update": metrics["last_learning_update"],
         }

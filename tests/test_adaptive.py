@@ -172,3 +172,63 @@ def test_acceptance_recovery_reduces_ignore_penalty():
     recovered = engine.feedback_signal("light.recover", context, settings, user_id="alice")
     assert recovered.ignore_penalty < initial.ignore_penalty
     assert recovered.acceptance_rate > initial.acceptance_rate
+
+
+def test_predictive_score_is_bounded_and_zero_influence_preserves_base():
+    assert (
+        LearningEngine.get_predictive_score(0.6, 1, 1, 0, AdaptiveSettings(prediction_influence=0))
+        == 0.6
+    )
+    boosted = LearningEngine.get_predictive_score(0.6, 1, 1, 0, AdaptiveSettings())
+    penalized = LearningEngine.get_predictive_score(0.6, 0, 0, 1, AdaptiveSettings())
+    assert 0.6 < boosted <= 1
+    assert 0 <= penalized < 0.6
+
+
+def test_top1_top3_and_offline_comparison_metrics():
+    settings = AdaptiveSettings(acceptance_window_minutes=10)
+    engine = LearningEngine()
+    context = context_fingerprint(START, True)
+    rows = [
+        {"entity_id": "light.first", "rank": 1, "score": 0.8},
+        {"entity_id": "script.third", "rank": 3, "score": 0.6},
+    ]
+    engine.record_exposure(
+        rows,
+        START,
+        settings,
+        context_hash=context,
+        confidence=1,
+        base_ranks={"light.first": 4, "script.third": 1},
+        adaptive_ranks={"light.first": 1, "script.third": 3},
+        force=True,
+    )
+    engine.resolve_exposure(action("light.first", START + timedelta(minutes=1)), settings)
+    metrics = engine.metrics_snapshot()
+    assert metrics["top1_hit_rate"] == 1
+    assert metrics["top3_hit_rate"] == 1
+    assert metrics["base_top3_hit_rate"] == 0
+    assert metrics["adaptive_top3_hit_rate"] == 1
+
+
+def test_top3_hit_and_metrics_survive_restart():
+    settings = AdaptiveSettings(acceptance_window_minutes=10)
+    engine = LearningEngine()
+    context = context_fingerprint(START, True)
+    engine.record_exposure(
+        [
+            {"entity_id": "light.first", "rank": 1, "score": 0.8},
+            {"entity_id": "script.third", "rank": 3, "score": 0.6},
+        ],
+        START,
+        settings,
+        context_hash=context,
+        confidence=1,
+        force=True,
+    )
+    engine.resolve_exposure(action("script.third", START + timedelta(minutes=1)), settings)
+    restored = LearningEngine(engine.export())
+    metrics = restored.metrics_snapshot()
+    assert metrics["top1_hit_rate"] == 0
+    assert metrics["top3_hit_rate"] == 1
+    assert metrics["accepted_suggestions"] == 1

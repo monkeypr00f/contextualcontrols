@@ -523,21 +523,31 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             result["candidate_scores"] = {
                 item.entity_id: {
                     "frequency": item.frequency,
+                    "frequency_score": item.frequency,
                     "time": item.time,
+                    "time_score": item.time,
                     "recency": item.recency,
+                    "recency_score": item.recency,
                     "confidence": item.confidence,
                     "current_state": item.current_state,
                     "weekday": item.weekday,
+                    "weekday_score": item.weekday,
                     "presence": item.presence,
                     "area": item.area,
                     "context": item.context,
+                    "context_score": item.context,
                     "base": item.base_score or item.score,
+                    "base_score": item.base_score or item.score,
                     "sequence": item.sequence_score,
+                    "sequence_score": item.sequence_score,
                     "acceptance": item.acceptance_score,
+                    "acceptance_score": item.acceptance_score,
                     "acceptance_rate": item.acceptance_rate,
                     "ignored": item.ignore_penalty,
+                    "ignore_penalty": item.ignore_penalty,
                     "adaptive_confidence": item.adaptive_confidence,
                     "final": item.score,
+                    "final_score": item.score,
                 }
                 for item in ranked[:30]
             }
