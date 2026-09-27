@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.6.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.6.1. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -36,9 +36,11 @@ Repository: [monkeypr00f/contextualcontrols](https://github.com/monkeypr00f/cont
 I metadati indicano questo repository e il manutentore `@monkeypr00f`.
 
 Repository pubblicata e download HACS verificato a partire dalla versione 0.1.0.
-La submission a Home Assistant Brands e l’inclusione nel catalogo HACS predefinito
-sono separate dall’installazione come repository personalizzata. La CI HACS
-ignora esclusivamente `brands` finché non viene completata tale submission.
+L’icona locale è inclusa nei formati ufficiali 256×256 e 512×512 e viene mostrata
+da Home Assistant 2026.3 o successivo. HACS non usa ancora le icone locali per le
+repository personalizzate: il relativo
+[problema HACS](https://github.com/hacs/integration/issues/5171) può lasciare vuota
+l’icona nella sola lista HACS, senza indicare un errore del pacchetto.
 
 Per installare una repository pubblicata:
 
@@ -67,7 +69,10 @@ In **Configura** trovi sezioni separate:
 | AI opzionale | Provider, shortlist, cache, timeout, temperatura e privacy |
 | Reset | Cancellazione confermata per istanza, entità o utente |
 
-Le modifiche ricaricano l’istanza automaticamente e mantengono l’apprendimento.
+Ogni sezione torna al menu principale, così puoi modificarne diverse senza
+chiudere e riaprire Configura. **Salva e chiudi** applica l’intera bozza con un
+solo reload; chiudere il dialogo prima del salvataggio scarta le modifiche.
+L’apprendimento già registrato viene mantenuto.
 La UI e i motivi supportano italiano e inglese; i motivi usano la lingua del
 server HA, perché un sensore condiviso non può avere attributi diversi per browser.
 

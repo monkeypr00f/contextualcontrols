@@ -251,32 +251,44 @@ class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ContextualOptionsFlow(OptionsFlowWithReload):
+    def _ensure_draft(self) -> None:
+        """Create a flow-local draft so users can edit several sections."""
+        if not hasattr(self, "_draft_options"):
+            self._draft_options = {
+                **deepcopy(DEFAULTS),
+                **deepcopy(dict(self.config_entry.options)),
+            }
+            self._draft_entry_data = deepcopy(dict(self.config_entry.data))
+
     async def async_step_init(self, user_input=None):
-        return self.async_show_menu(step_id="init", menu_options=[*SECTIONS, "ai", "reset"])
+        self._ensure_draft()
+        return self.async_show_menu(step_id="init", menu_options=[*SECTIONS, "ai", "reset", "save"])
 
     async def _section(self, section, user_input):
-        options = {**deepcopy(DEFAULTS), **self.config_entry.options}
+        self._ensure_draft()
+        options = self._draft_options
         if user_input is not None:
-            options.update(normalize(user_input))
-            if section == "learning" and options["user_id"]:
-                user = await self.hass.auth.async_get_user(options["user_id"])
+            proposed = {**options, **normalize(user_input)}
+            if section == "learning" and proposed["user_id"]:
+                user = await self.hass.auth.async_get_user(proposed["user_id"])
                 if user is None:
                     return self.async_show_form(
                         step_id=section,
-                        data_schema=schema_for(SECTIONS[section], options),
+                        data_schema=schema_for(SECTIONS[section], proposed),
                         errors={"user_id": "unknown_user"},
                     )
             if (
                 section == "context"
-                and options["presence_mode"] == "require_home"
-                and not options["presence_entities"]
+                and proposed["presence_mode"] == "require_home"
+                and not proposed["presence_entities"]
             ):
                 return self.async_show_form(
                     step_id=section,
-                    data_schema=schema_for(SECTIONS[section], options),
+                    data_schema=schema_for(SECTIONS[section], proposed),
                     errors={"presence_entities": "presence_required"},
                 )
-            return self.async_create_entry(title="", data=options)
+            self._draft_options = proposed
+            return await self.async_step_init()
         return self.async_show_form(
             step_id=section, data_schema=schema_for(SECTIONS[section], options)
         )
@@ -303,23 +315,26 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
         return await self._section("advanced", user_input)
 
     async def async_step_ai(self, user_input=None):
-        options = {**deepcopy(DEFAULTS), **self.config_entry.options}
+        self._ensure_draft()
+        options = self._draft_options
         if user_input is None:
             return self.async_show_form(
                 step_id="ai", data_schema=schema_for(AI_COMMON_FIELDS, options)
             )
-        options.update(normalize(user_input))
-        provider = options["ai_provider"]
+        proposed = {**options, **normalize(user_input)}
+        provider = proposed["ai_provider"]
         if provider == "disabled":
-            return self.async_create_entry(title="", data=options)
-        self._pending_ai_options = options
+            self._draft_options = proposed
+            return await self.async_step_init()
+        self._pending_ai_options = proposed
         return await getattr(self, f"async_step_ai_{provider}")()
 
     async def async_step_ai_ollama(self, user_input=None):
         options = self._pending_ai_options
         if user_input is not None:
             options.update(normalize(user_input))
-            return self.async_create_entry(title="", data=options)
+            self._draft_options = options
+            return await self.async_step_init()
         return self.async_show_form(
             step_id="ai_ollama",
             data_schema=schema_for(AI_PROVIDER_FIELDS["ollama"], options),
@@ -331,15 +346,15 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
             api_key = user_input.pop("api_key", "").strip()
             options.update(normalize(user_input))
             if api_key:
-                data = {**self.config_entry.data, "openai_api_key": api_key}
-                self.hass.config_entries.async_update_entry(self.config_entry, data=data)
-            if not self.config_entry.data.get("openai_api_key") and not api_key:
+                self._draft_entry_data["openai_api_key"] = api_key
+            if not self._draft_entry_data.get("openai_api_key"):
                 return self.async_show_form(
                     step_id="ai_openai_compatible",
                     data_schema=self._openai_schema(options),
                     errors={"api_key": "api_key_required"},
                 )
-            return self.async_create_entry(title="", data=options)
+            self._draft_options = options
+            return await self.async_step_init()
         return self.async_show_form(
             step_id="ai_openai_compatible", data_schema=self._openai_schema(options)
         )
@@ -365,7 +380,7 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                     user_input.get("entity_id"), user_input.get("user_id") or None
                 )
                 await coordinator.async_refresh()
-                return self.async_create_entry(title="", data=dict(self.config_entry.options))
+                return await self.async_step_init()
         return self.async_show_form(
             step_id="reset",
             errors=errors,
@@ -377,3 +392,12 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                 }
             ),
         )
+
+    async def async_step_save(self, user_input=None):
+        """Persist the whole draft and let OptionsFlowWithReload reload once."""
+        self._ensure_draft()
+        if self._draft_entry_data != dict(self.config_entry.data):
+            self.hass.config_entries.async_update_entry(
+                self.config_entry, data=self._draft_entry_data
+            )
+        return self.async_create_entry(title="", data=self._draft_options)

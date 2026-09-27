@@ -242,6 +242,11 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
                 "context_entities": ["input_boolean.contextual_night"],
             },
         )
+        self.assertEqual(result["type"], "menu")
+        self.assertNotEqual(entry.options["presence_mode"], "require_home")
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "save"}
+        )
         self.assertEqual(result["type"], "create_entry")
         await self.hass.async_block_till_done()
         coordinator = entry.runtime_data
@@ -326,6 +331,10 @@ asyncio.run(read())
                 "pinned_use_slots": True,
             },
         )
+        self.assertEqual(result["type"], "menu")
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "save"}
+        )
         self.assertEqual(result["type"], "create_entry")
         await self.hass.async_block_till_done()
         coordinator = entry.runtime_data
@@ -374,6 +383,11 @@ asyncio.run(read())
                 "ai_temperature": 0.1,
                 "api_key": "diagnostic-secret",
             },
+        )
+        self.assertEqual(result["type"], "menu")
+        self.assertNotIn("openai_api_key", entry.data)
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "save"}
         )
         self.assertEqual(result["type"], "create_entry")
         await self.hass.async_block_till_done()

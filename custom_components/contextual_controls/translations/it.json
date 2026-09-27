@@ -26,9 +26,10 @@
   },
   "options": {
     "step": {
-      "init": {
-        "title": "Configura Contextual Controls",
-        "menu_options": {
+    "init": {
+      "title": "Configura Contextual Controls",
+      "description": "Apri e modifica qualsiasi sezione. Le modifiche restano in questa finestra finché scegli Salva e chiudi.",
+      "menu_options": {
           "general": "Generale",
           "entities": "Entità",
           "learning": "Apprendimento",
@@ -37,8 +38,9 @@
           "advanced": "Avanzate / Debug",
           "ai": "AI opzionale",
           "reset": "Reset apprendimento",
-          "quick_access": "Accesso rapido / Apple"
-        }
+        "quick_access": "Accesso rapido / Apple",
+        "save": "Salva e chiudi"
+      }
       },
       "general": {
         "title": "Generale",

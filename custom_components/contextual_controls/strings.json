@@ -26,9 +26,10 @@
   },
   "options": {
     "step": {
-      "init": {
-        "title": "Configure Contextual Controls",
-        "menu_options": {
+    "init": {
+      "title": "Configure Contextual Controls",
+      "description": "Open and edit any section. Changes remain in this dialog until you choose Save and close.",
+      "menu_options": {
           "general": "General",
           "entities": "Entities",
           "learning": "Learning",
@@ -37,8 +38,9 @@
           "advanced": "Advanced / Debug",
           "ai": "Optional AI",
           "reset": "Reset learning",
-          "quick_access": "Quick Access / Apple"
-        }
+        "quick_access": "Quick Access / Apple",
+        "save": "Save and close"
+      }
       },
       "general": {
         "title": "General",
