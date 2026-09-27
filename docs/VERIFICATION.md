@@ -1,5 +1,18 @@
 # Verifica Phase 1 — 25 settembre 2026
 
+## Adaptive Learning 0.7.0
+
+- I test deterministici coprono soglia e finestra delle transizioni, decay, profili per utente e
+  fallback ibrido, suggerimenti ignorati/accettati, smoothing bayesiano, peso della posizione,
+  recovery, retention, limiti del predictive score, metriche Top-1/Top-3 persistenti, migrazione
+  storage e segnali adattivi inviati al reranker AI opzionale.
+- Lo smoke test con Home Assistant Core verifica migrazioni ConfigEntry/storage, registrazione dei
+  servizi, response data di `get_learning_stats`, compatibilità del reset selettivo, persistenza al
+  riavvio e il percorso di sicurezza Quick Access esistente.
+- Verifiche locali: `ruff format --check .`, `ruff check .`, `mypy` e `pytest -q`.
+- GitHub Actions esegue inoltre lo smoke test sull'immagine Home Assistant Core fissata, hassfest e
+  la validazione HACS.
+
 ## Risultato
 
 Integrazione **installata e configurata** nell’istanza indicata dall’utente,

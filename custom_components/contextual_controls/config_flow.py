@@ -124,6 +124,7 @@ CHOICES = {
     "suggestion_acceptance_window_minutes": ["2", "5", "10", "15", "30"],
     "learning_scope": LEARNING_SCOPES,
     "adaptive_retention_days": ["30", "60", "90", "180", "365"],
+    "reset_mode": ["all", "historical", "sequence", "feedback", "user", "entity"],
 }
 NUMERIC_CHOICES = {
     "learning_period_days",
@@ -449,12 +450,18 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
         if user_input is not None:
             if not user_input.get("confirm"):
                 errors["confirm"] = "confirmation_required"
+            elif user_input["reset_mode"] == "user" and not user_input.get("user_id"):
+                errors["user_id"] = "user_required"
+            elif user_input["reset_mode"] == "entity" and not user_input.get("entity_id"):
+                errors["entity_id"] = "entity_required"
             elif not getattr(self.config_entry, "runtime_data", None):
                 errors["base"] = "entry_not_loaded"
             else:
                 coordinator = self.config_entry.runtime_data
-                await coordinator.history.async_reset(
-                    user_input.get("entity_id"), user_input.get("user_id") or None
+                await coordinator.history.async_reset_mode(
+                    user_input["reset_mode"],
+                    user_input.get("entity_id"),
+                    user_input.get("user_id") or None,
                 )
                 await coordinator.async_refresh()
                 return await self.async_step_init()
@@ -463,6 +470,11 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
             errors=errors,
             data_schema=vol.Schema(
                 {
+                    vol.Required("reset_mode", default="all"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=CHOICES["reset_mode"], translation_key="reset_mode"
+                        )
+                    ),
                     vol.Optional("entity_id"): selector.EntitySelector(),
                     vol.Optional("user_id"): selector.TextSelector(),
                     vol.Required("confirm", default=False): selector.BooleanSelector(),

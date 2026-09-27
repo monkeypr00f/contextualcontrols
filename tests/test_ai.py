@@ -69,6 +69,27 @@ def test_prompt_contains_only_authorized_context():
     assert '"current_hour":22' in package.prompt
 
 
+def test_prompt_includes_local_adaptive_signals_as_read_only_statistics():
+    package = build_prompt(
+        NOW,
+        [
+            {
+                "entity_id": "script.goodnight",
+                "score": 0.81,
+                "base_score": 0.63,
+                "sequence_score": 0.82,
+                "acceptance_rate": 0.74,
+                "ignore_penalty": 0.04,
+            }
+        ],
+        PrivacySettings(),
+    )
+    assert '"base_score":0.63' in package.prompt
+    assert '"sequence_score":0.82' in package.prompt
+    assert '"acceptance_rate":0.74' in package.prompt
+    assert '"ignore_penalty":0.04' in package.prompt
+
+
 def test_parse_ai_response_and_ignore_invalid_entity():
     allowed = {item.entity_id: item.entity_id for item in items()}
     parsed = parse_order('["script.two", "invalid.entity", "script.two", "light.one"]', allowed)

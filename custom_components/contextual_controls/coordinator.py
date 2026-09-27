@@ -408,6 +408,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "state": state.state if state else None,
                             "area": area_entry.name if area_entry else area_id,
                             "score": item.score,
+                            "base_score": item.base_score,
+                            "sequence_score": item.sequence_score,
+                            "acceptance_rate": item.acceptance_rate,
+                            "ignore_penalty": item.ignore_penalty,
                             "count": item.count,
                             "reason": item.reason_key,
                         }
@@ -468,7 +472,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {
                     "entity_id": item.entity_id,
                     "score": item.score,
-                    "base_score": item.base_score or item.score,
+                    "base_score": item.score if item.pinned else item.base_score,
                     "sequence_score": item.sequence_score,
                     "reason": self._translations.get(key, item.reason_key),
                     "source": item.source,
@@ -536,8 +540,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "area": item.area,
                     "context": item.context,
                     "context_score": item.context,
-                    "base": item.base_score or item.score,
-                    "base_score": item.base_score or item.score,
+                    "base": item.base_score,
+                    "base_score": item.base_score,
                     "sequence": item.sequence_score,
                     "sequence_score": item.sequence_score,
                     "acceptance": item.acceptance_score,
@@ -595,6 +599,29 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "available": True,
             "slot_generation_id": self.slot_manager.generation,
             "slot_updated_at": snapshot.changed_at.isoformat(),
+        }
+
+    def learning_stats(
+        self, entity_id: str | None = None, user_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return aggregate diagnostics for an explicitly requested profile/entity."""
+        records = [
+            row
+            for row in self.history.records
+            if (entity_id is None or row.entity_id == entity_id)
+            and (user_id is None or row.user_id == user_id)
+        ]
+        if entity_id is None:
+            return {
+                "actions": len(records),
+                "sequence_patterns": len(self.history.learning.transitions),
+                **self.history.learning.metrics_snapshot(),
+            }
+        return {
+            "entity_id": entity_id,
+            "actions": len(records),
+            **self.history.learning.entity_feedback_stats(entity_id, user_id=user_id),
+            "top_predecessors": self.history.learning.top_predecessors(entity_id, user_id=user_id),
         }
 
     async def async_execute_slot(

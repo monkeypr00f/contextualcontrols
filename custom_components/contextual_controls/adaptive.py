@@ -773,6 +773,9 @@ class LearningEngine:
                 and (user_id is None or row.user_id == user_id)
             )
         ]
+        if entity_id is None and user_id is None:
+            for key in self.metrics:
+                self.metrics[key] = 0
 
     def top_predecessors(
         self, entity_id: str, *, user_id: str | None = None, limit: int = 5
@@ -794,6 +797,25 @@ class LearningEngine:
             }
             for stat in matches[:limit]
         ]
+
+    def entity_feedback_stats(
+        self, entity_id: str, *, user_id: str | None = None
+    ) -> dict[str, Any]:
+        profile = user_id or GLOBAL_PROFILE
+        stat = self.feedback.get((profile, entity_id, "*"))
+        if stat is None:
+            return {
+                "suggestions": 0,
+                "accepted": 0,
+                "ignored": 0,
+                "acceptance_rate": 0.5,
+            }
+        return {
+            "suggestions": stat.exposures,
+            "accepted": stat.accepted,
+            "ignored": stat.ignored,
+            "acceptance_rate": round((stat.accepted_weight + 2) / (stat.exposure_weight + 4), 4),
+        }
 
     def counts(self) -> dict[str, Any]:
         supported = sum(1 for stat in self.transitions.values() if stat.count >= 3)

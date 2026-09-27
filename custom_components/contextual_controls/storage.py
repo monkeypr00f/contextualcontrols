@@ -80,6 +80,22 @@ class History:
         self.records = deque(reset(self.records, entity_id, user_id))
         await self.async_flush()
 
+    async def async_reset_mode(
+        self,
+        mode: str,
+        entity_id: str | None = None,
+        user_id: str | None = None,
+    ) -> None:
+        """Reset historical, sequence or feedback learning without touching config."""
+        reset_all_scopes = mode in ("all", "user", "entity")
+        if mode == "historical" or reset_all_scopes:
+            self.records = deque(reset(self.records, entity_id, user_id))
+        if mode == "sequence" or reset_all_scopes:
+            self.learning.reset_sequence(entity_id=entity_id, user_id=user_id)
+        if mode == "feedback" or reset_all_scopes:
+            self.learning.reset_feedback(entity_id=entity_id, user_id=user_id)
+        await self.async_flush()
+
     def counts(self) -> dict[str, Any]:
         return {
             "learning_records_count": len(self.records),

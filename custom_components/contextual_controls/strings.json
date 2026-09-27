@@ -139,12 +139,14 @@
         "data": {
           "entity_id": "Entity (optional)",
           "user_id": "Specific user ID (optional)",
-          "confirm": "Confirm learning reset"
+          "confirm": "Confirm learning reset",
+          "reset_mode": "Reset mode"
         },
         "data_description": {
           "entity_id": "If set, reset only this entity. Combined with a user filter, resets their intersection.",
           "user_id": "Leave empty for all users. Otherwise enter the ID from Settings → People → Users. Unattributed commands are excluded for specific profiles.",
-          "confirm": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
+          "confirm": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup.",
+          "reset_mode": "Select historical, sequence, feedback, or a complete user/entity filtered reset."
         }
       },
       "ai": {
@@ -279,7 +281,9 @@
       "entry_not_loaded": "This integration instance must be loaded.",
       "presence_required": "Choose at least one presence entity for require-home mode.",
       "api_key_required": "Enter an API key.",
-      "entry_required": "Choose an integration instance when more than one is configured."
+      "entry_required": "Choose an integration instance when more than one is configured.",
+      "user_required": "Enter a user ID.",
+      "entity_required": "Select an entity."
     }
   },
   "entity": {
@@ -329,12 +333,18 @@
     },
     "entry_required": {
       "message": "Choose an integration instance when more than one is configured."
+    },
+    "user_required": {
+      "message": "A user ID is required for this mode."
+    },
+    "entity_required": {
+      "message": "An entity is required for this mode."
     }
   },
   "services": {
     "reset_learning": {
       "name": "Reset learning",
-      "description": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup.",
+      "description": "Selectively deletes historical and adaptive learning. Confirmation is required.",
       "fields": {
         "config_entry_id": {
           "name": "Integration instance"
@@ -350,6 +360,10 @@
         "confirm": {
           "name": "Confirm learning reset",
           "description": "Required. With no filters, deletes all learning for this instance. Cannot be undone without a backup."
+        },
+        "mode": {
+          "name": "Reset mode",
+          "description": "Choose which part of the model to delete."
         }
       }
     },
@@ -391,6 +405,21 @@
         "source": {
           "name": "Source",
           "description": "Used only for learning and diagnostics."
+        }
+      }
+    },
+    "get_learning_stats": {
+      "name": "Get learning statistics",
+      "description": "Returns diagnostic aggregates only; it does not change the model.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Integration instance"
+        },
+        "entity_id": {
+          "name": "Optional entity"
+        },
+        "user_id": {
+          "name": "Optional user ID"
         }
       }
     }
@@ -576,6 +605,16 @@
         "90": "90 days",
         "180": "180 days",
         "365": "365 days"
+      }
+    },
+    "reset_mode": {
+      "options": {
+        "all": "All learning",
+        "historical": "Historical usage",
+        "sequence": "Sequences",
+        "feedback": "Suggestion feedback",
+        "user": "Specific user",
+        "entity": "Specific entity"
       }
     }
   }

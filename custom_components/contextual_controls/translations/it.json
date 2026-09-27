@@ -139,12 +139,14 @@
         "data": {
           "entity_id": "Entità (opzionale)",
           "user_id": "ID utente specifico (opzionale)",
-          "confirm": "Conferma reset apprendimento"
+          "confirm": "Conferma reset apprendimento",
+          "reset_mode": "Modalità reset"
         },
         "data_description": {
           "entity_id": "Se specificata, resetta solo questa entità. Insieme al filtro utente resetta la loro intersezione.",
           "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
-          "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+          "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup.",
+          "reset_mode": "Seleziona storico, sequenze, feedback oppure un filtro completo per utente/entità."
         }
       },
       "ai": {
@@ -279,7 +281,9 @@
       "entry_not_loaded": "Questa istanza deve essere caricata.",
       "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa.",
       "api_key_required": "Inserisci una API key.",
-      "entry_required": "Scegli un'istanza quando ne è configurata più di una."
+      "entry_required": "Scegli un'istanza quando ne è configurata più di una.",
+      "user_required": "Inserisci un ID utente.",
+      "entity_required": "Seleziona un’entità."
     }
   },
   "entity": {
@@ -329,12 +333,18 @@
     },
     "entry_required": {
       "message": "Scegli un'istanza quando ne è configurata più di una."
+    },
+    "user_required": {
+      "message": "È richiesto un ID utente per questa modalità."
+    },
+    "entity_required": {
+      "message": "È richiesta un’entità per questa modalità."
     }
   },
   "services": {
     "reset_learning": {
       "name": "Reset apprendimento",
-      "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup.",
+      "description": "Cancella in modo selettivo storico e apprendimento adattivo. Richiede conferma.",
       "fields": {
         "config_entry_id": {
           "name": "Istanza integrazione"
@@ -350,6 +360,10 @@
         "confirm": {
           "name": "Conferma reset apprendimento",
           "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+        },
+        "mode": {
+          "name": "Modalità reset",
+          "description": "Scegli quale parte del modello eliminare."
         }
       }
     },
@@ -391,6 +405,21 @@
         "source": {
           "name": "Origine",
           "description": "Usata solo per apprendimento e diagnostica."
+        }
+      }
+    },
+    "get_learning_stats": {
+      "name": "Statistiche apprendimento",
+      "description": "Restituisce solo aggregati diagnostici; non modifica il modello.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Istanza integrazione"
+        },
+        "entity_id": {
+          "name": "Entità opzionale"
+        },
+        "user_id": {
+          "name": "ID utente opzionale"
         }
       }
     }
@@ -576,6 +605,16 @@
         "90": "90 giorni",
         "180": "180 giorni",
         "365": "365 giorni"
+      }
+    },
+    "reset_mode": {
+      "options": {
+        "all": "Tutto",
+        "historical": "Storico utilizzi",
+        "sequence": "Sequenze",
+        "feedback": "Feedback suggerimenti",
+        "user": "Utente specifico",
+        "entity": "Entità specifica"
       }
     }
   }

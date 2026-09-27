@@ -85,7 +85,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await history.async_load(dt_util.utcnow())
         self.assertEqual(len(history.records), 1)
         self.assertEqual(history.records[0].confidence, 0.2)
-        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 4)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 5)
         future = History(self.hass, "future")
         path = Path(future.store.path)
         await asyncio.to_thread(write, 999)
@@ -313,7 +313,7 @@ asyncio.run(read())
         old_options["learn_sources"] = ["user"]
         self.hass.config_entries.async_update_entry(entry, options=old_options, version=1)
         self.assertTrue(await self.hass.config_entries.async_reload(entry.entry_id))
-        self.assertEqual(entry.version, 3)
+        self.assertEqual(entry.version, 4)
         self.assertEqual(entry.options["learn_sources"], ["manual"])
         self.assertEqual(entry.options["presence_mode"], "signal")
         self.assertEqual(entry.options["ai_provider"], "disabled")
@@ -481,6 +481,17 @@ asyncio.run(read())
         self.assertEqual(coordinator.history.records[-2].source, "quick_access")
         self.assertEqual(coordinator.history.records[-2].source_detail, "apple_watch")
         self.assertEqual(coordinator.history.records[-1].source_detail, "ios_lock_screen")
+
+        stats = await self.hass.services.async_call(
+            DOMAIN,
+            "get_learning_stats",
+            {"config_entry_id": entry.entry_id, "entity_id": "light.test_contextual"},
+            blocking=True,
+            return_response=True,
+        )
+        self.assertEqual(stats["actions"], 2)
+        self.assertEqual(stats["accepted"], 2)
+        self.assertEqual(stats["suggestions"], 2)
 
         class ForbiddenAI:
             async def async_rerank(self, *args, **kwargs):

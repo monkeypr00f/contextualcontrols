@@ -183,6 +183,8 @@ def test_predictive_score_is_bounded_and_zero_influence_preserves_base():
     penalized = LearningEngine.get_predictive_score(0.6, 0, 0, 1, AdaptiveSettings())
     assert 0.6 < boosted <= 1
     assert 0 <= penalized < 0.6
+    zero_base = LearningEngine.get_predictive_score(0, 1, 0, 0, AdaptiveSettings())
+    assert 0 < zero_base <= 1
 
 
 def test_top1_top3_and_offline_comparison_metrics():
@@ -232,3 +234,64 @@ def test_top3_hit_and_metrics_survive_restart():
     assert metrics["top1_hit_rate"] == 0
     assert metrics["top3_hit_rate"] == 1
     assert metrics["accepted_suggestions"] == 1
+
+
+def test_per_user_scope_and_hybrid_global_fallback():
+    engine = LearningEngine()
+    moment = train(engine, 3)
+    bob_trigger = action("media_player.tv", moment + timedelta(minutes=1), user="bob")
+    engine.record_action(bob_trigger, SETTINGS)
+    per_user = AdaptiveSettings(
+        learning_scope="user",
+        minimum_transition_occurrences=3,
+        source_weights={"manual": 1.0},
+    )
+    hybrid = AdaptiveSettings(
+        learning_scope="hybrid",
+        minimum_transition_occurrences=3,
+        source_weights={"manual": 1.0},
+    )
+    query_time = bob_trigger.timestamp + timedelta(minutes=4)
+    assert (
+        engine.get_sequence_score("script.goodnight", query_time, per_user, user_id="bob").score
+        == 0
+    )
+    assert (
+        engine.get_sequence_score("script.goodnight", query_time, hybrid, user_id="bob").score > 0
+    )
+
+
+def test_zero_weight_source_does_not_teach_transition():
+    engine = LearningEngine()
+    settings = AdaptiveSettings(source_weights={"automation": 0})
+    first = Usage(START, "light.a", None, "automation", "turn_on", 1)
+    second = Usage(START + timedelta(minutes=1), "light.b", None, "automation", "turn_on", 1)
+    engine.record_action(first, settings)
+    engine.record_action(second, settings)
+    assert not engine.transitions
+
+
+def test_exposure_retention_cleanup():
+    engine = LearningEngine()
+    settings = AdaptiveSettings(acceptance_window_minutes=2)
+    expose(engine, "light.old", START, settings)
+    engine.cleanup(START + timedelta(days=31), 30, settings)
+    assert not engine.exposures
+
+
+def test_selective_sequence_and_feedback_reset():
+    engine = LearningEngine()
+    moment = train(engine, 3)
+    settings = AdaptiveSettings(minimum_exposures=1, acceptance_window_minutes=10)
+    expose(engine, "script.goodnight", moment, settings)
+    engine.resolve_exposure(action("script.goodnight", moment + timedelta(minutes=1)), settings)
+
+    assert engine.transitions
+    assert engine.feedback
+    engine.reset_sequence(entity_id="script.goodnight")
+    assert not any(stat.to_entity == "script.goodnight" for stat in engine.transitions.values())
+    assert engine.feedback
+
+    engine.reset_feedback(entity_id="script.goodnight")
+    assert not engine.feedback
+    assert not engine.exposures
