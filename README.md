@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.6.1. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.7.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -143,6 +143,57 @@ nessuna distinzione. La presenza può essere ignorata, usata come segnale oppure
 richiesta: in quest’ultimo caso vengono nascosti anche i controlli fissi quando
 nessuna entità configurata è a casa. Gli stati contestuali sono confrontati come
 valori opachi, senza inferenze semantiche.
+
+### Adaptive Learning
+
+Adaptive Learning è un livello locale e disattivabile applicato **dopo** il
+motore statistico esistente. Impara transizioni A→B tra sole azioni
+significative, per esempio `media_player.apple_tv` → `script.buonanotte`, e
+misura quali suggerimenti vengono scelti entro la finestra di accettazione.
+Una transizione non influenza il ranking prima del supporto minimo configurato;
+le transizioni vecchie decadono e il ritardo osservato viene confrontato con il
+ritardo medio e mediano appreso.
+
+Le esposizioni del ranking sono compatte e deduplicate. Poiché un’integrazione
+backend non può sapere se una dashboard è realmente visibile, un normale
+refresh viene registrato con confidence ridotta. Uno slot Quick Access non è
+considerato visto quando viene semplicemente pubblicato: il tap fornisce invece
+un’esposizione ad alta confidence. Gli ignore producono una penalità soltanto
+dopo esposizioni ripetute e con smoothing Beta(2,2); nuove accettazioni fanno
+recuperare automaticamente l’entità.
+
+Il punteggio finale resta limitato tra 0 e 1:
+
+```text
+target = base
+       + sequence_influence × sequence_score × (1 - base)
+       + acceptance_boost × acceptance_score × (1 - base)
+       - ignored_penalty_strength × ignore_penalty × base
+
+final = lerp(base, clamp(target), prediction_influence)
+```
+
+Lo scope può essere globale, per utente o ibrido. Ibrido preferisce il profilo
+utente quando ha supporto sufficiente e altrimenti usa gli aggregati globali.
+Il buffer delle ultime azioni riparte vuoto dopo un riavvio; transizioni,
+feedback e metriche restano nello stesso Store privato dello storico.
+
+Il sensore `sensor.contextual_controls_learning` è diagnostico e disabilitato
+di default. Espone Top‑1, Top‑3, acceptance rate, confidence e confronto offline
+fra ranking base e adattivo. L’action diagnostica restituisce aggregati per
+entità senza modificare il modello:
+
+```yaml
+action: contextual_controls.get_learning_stats
+data:
+  entity_id: script.buonanotte
+response_variable: learning
+```
+
+Con debug attivo, `candidate_scores` include `base_score`, `sequence_score`,
+`acceptance_score`, `acceptance_rate`, `ignore_penalty`,
+`adaptive_confidence` e `final_score`. In modalità normale le spiegazioni
+restano positive o neutrali; il dettaglio degli ignore appare solo nel debug.
 
 ## Privacy e sicurezza
 
@@ -312,9 +363,10 @@ La provenienza (`apple_watch`, `ios_lock_screen`, `shortcut`, `action_button` o
 
 ## Reset e ignora utilizzo
 
-La via più semplice è **Configura → Reset apprendimento**. Scegli eventualmente
-entità e utente e attiva la conferma. Senza filtri il reset riguarda l’intera
-istanza. I due filtri insieme selezionano la loro intersezione.
+La via più semplice è **Configura → Reset apprendimento**. Puoi eliminare tutto,
+solo lo storico, solo sequenze, solo feedback oppure applicare un reset completo
+a una singola entità o utente. La conferma è sempre obbligatoria. I filtri
+entità e utente insieme selezionano la loro intersezione.
 
 La stessa operazione è disponibile in **Strumenti per sviluppatori → Azioni →
 Contextual Controls: Reset apprendimento**, con selector dell’istanza e

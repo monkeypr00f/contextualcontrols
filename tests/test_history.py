@@ -46,6 +46,19 @@ def test_v1_migration_and_future_rejection():
         migrate_payload(999, data)
 
 
+def test_v4_migration_adds_empty_adaptive_schema():
+    old = encode([row()])
+    old.pop("adaptive")
+    migrated = migrate_payload(4, old)
+    assert migrated["records"] == old["records"]
+    assert migrated["adaptive"] == {
+        "transitions": [],
+        "exposures": [],
+        "feedback": [],
+        "metrics": {},
+    }
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [

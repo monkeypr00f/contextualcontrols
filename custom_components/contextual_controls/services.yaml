@@ -8,6 +8,18 @@ reset_learning:
     entity_id:
       selector:
         entity: {}
+    mode:
+      required: true
+      default: all
+      selector:
+        select:
+          options:
+            - all
+            - historical
+            - sequence
+            - feedback
+            - user
+            - entity
     user_id:
       selector:
         text: {}
@@ -16,6 +28,19 @@ reset_learning:
       default: false
       selector:
         boolean: {}
+
+get_learning_stats:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: contextual_controls
+    entity_id:
+      selector:
+        entity: {}
+    user_id:
+      selector:
+        text: {}
 
 get_slot:
   fields:

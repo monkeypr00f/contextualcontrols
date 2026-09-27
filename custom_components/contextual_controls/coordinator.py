@@ -27,6 +27,7 @@ from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .adaptive import AdaptiveSettings, context_fingerprint
 from .ai import (
     AIManager,
     AIReranker,
@@ -114,6 +115,38 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if provider_name == "disabled":
             return
         self._ai_status = "ready"
+
+    def _adaptive_settings(self) -> AdaptiveSettings:
+        source_weights = {
+            name: float(self.options[f"adaptive_weight_{name}"]) / 100
+            for name in (
+                "manual",
+                "assist",
+                "quick_access",
+                "apple_watch",
+                "shortcut",
+                "script",
+                "automation",
+                "unknown",
+            )
+        }
+        return AdaptiveSettings(
+            enabled=self.options["adaptive_learning"],
+            sequence_enabled=self.options["sequence_learning"],
+            sequence_window_minutes=int(self.options["sequence_window_minutes"]),
+            sequence_influence=float(self.options["sequence_influence"]),
+            minimum_transition_occurrences=int(self.options["minimum_transition_occurrences"]),
+            sequence_decay_days=int(self.options["sequence_decay_days"]),
+            prediction_influence=float(self.options["prediction_influence"]),
+            learning_scope=self.options["learning_scope"],
+            retention_days=int(self.options["adaptive_retention_days"]),
+            ignored_suggestion_learning=self.options["ignored_suggestion_learning"],
+            acceptance_window_minutes=int(self.options["suggestion_acceptance_window_minutes"]),
+            minimum_exposures=int(self.options["minimum_exposures"]),
+            ignored_penalty_strength=float(self.options["ignored_suggestion_penalty"]),
+            acceptance_boost=float(self.options["acceptance_boost"]),
+            source_weights=source_weights,
+        )
 
     def _ensure_ai_manager(self) -> None:
         if self._ai_manager is not None or self.options["ai_provider"] == "disabled":
@@ -268,18 +301,25 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ):
                 continue
             if self._dedup.accept(event.context.id, entity_id, action, now.timestamp()):
-                self.history.append(
-                    Usage(
-                        now,
-                        entity_id,
-                        event.context.user_id,
-                        source,
-                        action,
-                        confidence,
-                        self.areas.get(entity_id),
-                        presence,
-                        context,
-                    )
+                record = Usage(
+                    now,
+                    entity_id,
+                    event.context.user_id,
+                    source,
+                    action,
+                    confidence,
+                    self.areas.get(entity_id),
+                    presence,
+                    context,
+                )
+                self.history.append(record)
+                self.history.learning.resolve_exposure(
+                    record, self._adaptive_settings(), now=dt_util.as_local(record.timestamp)
+                )
+                self.history.learning.record_action(
+                    record,
+                    self._adaptive_settings(),
+                    local_timestamp=dt_util.as_local(record.timestamp),
                 )
                 self._request()
 
@@ -289,6 +329,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = dt_util.now()
         presence, context, active_areas = self._signal_snapshot()
         self.history.prune(now)
+        adaptive_settings = self._adaptive_settings()
+        self.history.learning.cleanup(now, adaptive_settings.retention_days, adaptive_settings)
         self.history.schedule_save()
         candidates = {
             entity_id: Candidate(entity_id, state.state, self.areas.get(entity_id))
@@ -322,6 +364,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ai_used = False
         ai_cached = False
         ai_error = None
+        base_ranks: dict[str, int] = {}
+        adaptive_ranks: dict[str, int] = {}
         if self.options["presence_mode"] == "require_home" and presence is not True:
             ranked = []
             selected = []
@@ -329,6 +373,17 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ranked = await self.hass.async_add_executor_job(
                 rank, tuple(candidates.values()), tuple(self.history.records), now, settings
             )
+            base_ranks = {item.entity_id: index for index, item in enumerate(ranked, 1)}
+            ranked = await self.hass.async_add_executor_job(
+                self.history.learning.apply_adaptive,
+                ranked,
+                now,
+                adaptive_settings,
+                self.options["user_id"] or None,
+                presence,
+                context_fingerprint(now, presence, context),
+            )
+            adaptive_ranks = {item.entity_id: index for index, item in enumerate(ranked, 1)}
             if (
                 self.options["ai_provider"] != "disabled"
                 and self.options["mode"] != "statistical"
@@ -353,6 +408,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "state": state.state if state else None,
                             "area": area_entry.name if area_entry else area_id,
                             "score": item.score,
+                            "base_score": item.base_score,
+                            "sequence_score": item.sequence_score,
+                            "acceptance_rate": item.acceptance_rate,
+                            "ignore_penalty": item.ignore_penalty,
                             "count": item.count,
                             "reason": item.reason_key,
                         }
@@ -413,6 +472,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {
                     "entity_id": item.entity_id,
                     "score": item.score,
+                    "base_score": item.score if item.pinned else item.base_score,
+                    "sequence_score": item.sequence_score,
                     "reason": self._translations.get(key, item.reason_key),
                     "source": item.source,
                     "rank": index,
@@ -424,6 +485,19 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.slot_manager.update(rows, now, self._quick_target_valid)
         else:
             self.slot_manager.clear(now)
+        if rows and self.options["adaptive_learning"]:
+            self.history.learning.record_exposure(
+                [row for row in rows if not row["pinned"]],
+                now,
+                adaptive_settings,
+                context_hash=context_fingerprint(now, presence, context),
+                source="unknown",
+                confidence=0.35,
+                user_id=self.options["user_id"] or None,
+                base_ranks=base_ranks,
+                adaptive_ranks=adaptive_ranks,
+            )
+            self.history.schedule_save()
         result = {
             "entities": rows,
             "last_update": now.isoformat(),
@@ -453,15 +527,31 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             result["candidate_scores"] = {
                 item.entity_id: {
                     "frequency": item.frequency,
+                    "frequency_score": item.frequency,
                     "time": item.time,
+                    "time_score": item.time,
                     "recency": item.recency,
+                    "recency_score": item.recency,
                     "confidence": item.confidence,
                     "current_state": item.current_state,
                     "weekday": item.weekday,
+                    "weekday_score": item.weekday,
                     "presence": item.presence,
                     "area": item.area,
                     "context": item.context,
+                    "context_score": item.context,
+                    "base": item.base_score,
+                    "base_score": item.base_score,
+                    "sequence": item.sequence_score,
+                    "sequence_score": item.sequence_score,
+                    "acceptance": item.acceptance_score,
+                    "acceptance_score": item.acceptance_score,
+                    "acceptance_rate": item.acceptance_rate,
+                    "ignored": item.ignore_penalty,
+                    "ignore_penalty": item.ignore_penalty,
+                    "adaptive_confidence": item.adaptive_confidence,
                     "final": item.score,
+                    "final_score": item.score,
                 }
                 for item in ranked[:30]
             }
@@ -509,6 +599,29 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "available": True,
             "slot_generation_id": self.slot_manager.generation,
             "slot_updated_at": snapshot.changed_at.isoformat(),
+        }
+
+    def learning_stats(
+        self, entity_id: str | None = None, user_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return aggregate diagnostics for an explicitly requested profile/entity."""
+        records = [
+            row
+            for row in self.history.records
+            if (entity_id is None or row.entity_id == entity_id)
+            and (user_id is None or row.user_id == user_id)
+        ]
+        if entity_id is None:
+            return {
+                "actions": len(records),
+                "sequence_patterns": len(self.history.learning.transitions),
+                **self.history.learning.metrics_snapshot(),
+            }
+        return {
+            "entity_id": entity_id,
+            "actions": len(records),
+            **self.history.learning.entity_feedback_stats(entity_id, user_id=user_id),
+            "top_predecessors": self.history.learning.top_predecessors(entity_id, user_id=user_id),
         }
 
     async def async_execute_slot(
@@ -599,19 +712,44 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.options["quick_access_track_usage"]:
                 now = dt_util.utcnow()
                 presence, context_states, _active_areas = self._signal_snapshot()
-                self.history.append(
-                    Usage(
-                        now,
-                        entity_id,
-                        context.user_id,
-                        "quick_access",
-                        action.service,
-                        float(self.options["quick_access_usage_weight"]) / 100,
-                        self.areas.get(entity_id),
-                        presence,
-                        context_states,
-                        source if source in QUICK_ACCESS_SOURCES else "unknown",
-                    )
+                record = Usage(
+                    now,
+                    entity_id,
+                    context.user_id,
+                    "quick_access",
+                    action.service,
+                    float(self.options["quick_access_usage_weight"]) / 100,
+                    self.areas.get(entity_id),
+                    presence,
+                    context_states,
+                    source if source in QUICK_ACCESS_SOURCES else "unknown",
+                )
+                local_now = dt_util.as_local(record.timestamp)
+                self.history.learning.record_exposure(
+                    [
+                        {
+                            "entity_id": entity_id,
+                            "rank": slot,
+                            "slot": slot,
+                            "score": result.get("score", 0),
+                        }
+                    ],
+                    local_now,
+                    self._adaptive_settings(),
+                    context_hash=context_fingerprint(local_now, presence, context_states),
+                    source=source if source in QUICK_ACCESS_SOURCES else "unknown",
+                    confidence=1.0,
+                    user_id=context.user_id,
+                    force=True,
+                )
+                self.history.append(record)
+                self.history.learning.resolve_exposure(
+                    record, self._adaptive_settings(), now=local_now
+                )
+                self.history.learning.record_action(
+                    record,
+                    self._adaptive_settings(),
+                    local_timestamp=dt_util.as_local(record.timestamp),
                 )
                 self._request()
             self.quick_access_executions += 1

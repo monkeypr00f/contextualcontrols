@@ -267,6 +267,84 @@ history query or ranking refresh is performed. Slot snapshots are intentionally
 ephemeral across integration reloads; retained learning is persistent, while a
 new process safely publishes a fresh generation before accepting a tap.
 
+## Adaptive Learning
+
+Adaptive Learning is an optional local layer after the existing deterministic
+scorer. It never changes eligibility, minimum-confidence filtering, pinned
+composition or Quick Access safety. Disabling it returns the exact base ranking.
+
+The event model reuses accepted `Usage` records. `LearningEngine.record_action`
+receives the same significant action only after origin classification, target
+validation and deduplication. A bounded, non-persistent recent-action buffer is
+kept per user plus a global buffer. Source weights and the original confidence
+scale evidence without promoting raw `state_changed` events.
+
+The transition model stores compact A→B aggregates rather than rescanning raw
+history. Each aggregate records raw and weighted counts, last observation,
+delay sum, a bounded delay sample for the median, and distributions for
+morning/afternoon/evening/night, weekday/weekend and home/away/unknown. Sequence
+scores require the configured minimum raw support, decay by age, compare the
+current delay with the learned delay, and softly match the current context.
+Old or low-support patterns therefore cannot dominate the base score.
+
+The exposure model stores one compact row per published suggestion generation:
+timestamp, entity, final/base/adaptive rank, score, source confidence, context
+hash, slot, generation, accepted state and delay. Identical rankings are
+debounced, and an ordinary coordinator refresh is recorded as an `unknown`
+exposure with reduced confidence because the integration cannot prove the
+dashboard was visible. Quick Access execution records a high-confidence
+exposure only when the tap proves interaction; merely publishing a Watch slot
+does not count as a view.
+
+An action within the acceptance window resolves matching exposure rows as
+accepted. Expired unresolved rows become ignored. Incremental feedback
+aggregates are segmented only by time bucket, weekday/weekend and presence,
+with an all-context fallback. Smoothed acceptance uses Beta(2, 2). Penalties do
+not start before the configured exposure threshold, remain bounded by the
+configured strength and recover as later acceptances change the aggregate.
+Frequently accepted suggestions receive a separately bounded boost.
+
+For each candidate the predictive layer computes sequence, acceptance and
+ignore signals in [0, 1]. It first builds an adaptive target from the base score:
+
+`target = base + sequence_influence * sequence * (1-base)
+               + acceptance_boost * acceptance * (1-base)
+               - ignored_penalty * ignore * base`
+
+and then interpolates `final = lerp(base, clamp(target), prediction_influence)`.
+All percentages are divided by 100. The resulting score remains in [0, 1].
+Debug output retains base and every adaptive term. Standard reasons remain
+positive or neutral; full negative evidence is debug-only.
+
+Storage remains one private Home Assistant `Store` per ConfigEntry. Schema 5
+contains the existing `records` array plus an `adaptive` object with transition
+aggregates, live/recent exposures, feedback aggregates and metrics. The Store
+migration creates an empty adaptive section without changing old records.
+Writes remain delayed and snapshot-based. Raw exposures follow configurable
+30–365-day retention and strict capacity limits; compact aggregates decay and
+are removed when stale. The recent-action buffer intentionally starts empty
+after restart, while learned transitions, feedback and metrics persist.
+
+Learning scope can be global, per-user or hybrid. Global aggregates never store
+a user identifier. Per-user aggregates use the Context user ID internally.
+Hybrid prefers a sufficiently supported user aggregate and otherwise falls
+back to global evidence. Diagnostics expose counts and rates, not identities or
+raw histories. Reset can independently clear historical, sequence or feedback
+data, or filter adaptive and historical data by user/entity.
+
+Top-1 and Top-3 hit rates use the first significant action observed during an
+exposure window. The same observation updates offline `base_top3_hit` and
+`adaptive_top3_hit` counters using ranks captured before AI; users still see one
+normal ranking and are never randomized. AI, when enabled, receives only the
+already calculated sequence score, smoothed acceptance rate and ignore penalty
+under the existing usage-statistics privacy switch. The model cannot edit those
+values or add candidates.
+
+Cold start is conservative: sequence evidence below minimum support is zero,
+feedback below minimum exposures has no penalty, and the existing scorer is the
+only signal. Season, temperature, sunlight and sunrise/sunset can later extend
+the compact context segment without changing the storage contract.
+
 ## Verification policy
 
 Pure pytest tests exercise real scoring and policy. Following the user's

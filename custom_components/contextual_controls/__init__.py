@@ -4,10 +4,10 @@ from .const import DOMAIN
 
 
 async def async_migrate_entry(hass, entry):
-    """Migrate old source names and populate defaults through Phase 3."""
-    if entry.version > 3:
+    """Migrate old source names and populate current option defaults."""
+    if entry.version > 4:
         return False
-    if entry.version < 3:
+    if entry.version < 4:
         from copy import deepcopy
 
         from .const import DEFAULTS
@@ -18,7 +18,7 @@ async def async_migrate_entry(hass, entry):
             options["learn_sources"] = list(
                 dict.fromkeys(source_map.get(source, source) for source in options["learn_sources"])
             )
-        hass.config_entries.async_update_entry(entry, options=options, version=3)
+        hass.config_entries.async_update_entry(entry, options=options, version=4)
     return True
 
 
@@ -57,8 +57,17 @@ async def async_setup(hass, config):
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="confirmation_required"
             )
-        await entry.runtime_data.history.async_reset(
-            call.data.get("entity_id"), call.data.get("user_id")
+        mode = call.data["mode"]
+        if mode == "user" and not call.data.get("user_id"):
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="user_required")
+        if mode == "entity" and not call.data.get("entity_id"):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="entity_required"
+            )
+        await entry.runtime_data.history.async_reset_mode(
+            mode,
+            call.data.get("entity_id"),
+            call.data.get("user_id"),
         )
         await entry.runtime_data.async_refresh()
 
@@ -70,10 +79,32 @@ async def async_setup(hass, config):
             {
                 vol.Required("config_entry_id"): cv.string,
                 vol.Required("confirm", default=False): cv.boolean,
+                vol.Required("mode", default="all"): vol.In(
+                    ("all", "historical", "sequence", "feedback", "user", "entity")
+                ),
                 vol.Optional("entity_id"): cv.entity_id,
                 vol.Optional("user_id"): cv.string,
             }
         ),
+    )
+
+    async def get_learning_stats(call):
+        return coordinator_for(call).learning_stats(
+            call.data.get("entity_id"), call.data.get("user_id")
+        )
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_learning_stats",
+        get_learning_stats,
+        schema=vol.Schema(
+            {
+                vol.Optional("config_entry_id"): cv.string,
+                vol.Optional("entity_id"): cv.entity_id,
+                vol.Optional("user_id"): cv.string,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
     )
 
     slot_schema = {

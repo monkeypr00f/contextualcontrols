@@ -26,10 +26,10 @@
   },
   "options": {
     "step": {
-    "init": {
-      "title": "Configura Contextual Controls",
-      "description": "Apri e modifica qualsiasi sezione. Le modifiche restano in questa finestra finché scegli Salva e chiudi.",
-      "menu_options": {
+      "init": {
+        "title": "Configura Contextual Controls",
+        "description": "Apri e modifica qualsiasi sezione. Le modifiche restano in questa finestra finché scegli Salva e chiudi.",
+        "menu_options": {
           "general": "Generale",
           "entities": "Entità",
           "learning": "Apprendimento",
@@ -38,9 +38,11 @@
           "advanced": "Avanzate / Debug",
           "ai": "AI opzionale",
           "reset": "Reset apprendimento",
-        "quick_access": "Accesso rapido / Apple",
-        "save": "Salva e chiudi"
-      }
+          "quick_access": "Accesso rapido / Apple",
+          "save": "Salva e chiudi",
+          "adaptive": "Apprendimento adattivo",
+          "adaptive_sources": "Pesi origini adattive"
+        }
       },
       "general": {
         "title": "Generale",
@@ -137,12 +139,14 @@
         "data": {
           "entity_id": "Entità (opzionale)",
           "user_id": "ID utente specifico (opzionale)",
-          "confirm": "Conferma reset apprendimento"
+          "confirm": "Conferma reset apprendimento",
+          "reset_mode": "Modalità reset"
         },
         "data_description": {
           "entity_id": "Se specificata, resetta solo questa entità. Insieme al filtro utente resetta la loro intersezione.",
           "user_id": "Lascia vuoto per tutti gli utenti. Altrimenti inserisci l’ID da Impostazioni → Persone → Utenti. Un profilo specifico esclude i comandi senza utente identificabile.",
-          "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+          "confirm": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup.",
+          "reset_mode": "Seleziona storico, sequenze, feedback oppure un filtro completo per utente/entità."
         }
       },
       "ai": {
@@ -219,6 +223,56 @@
           "quick_access_track_usage": "Gli utilizzi riusciti alimentano lo stesso apprendimento del ranking.",
           "quick_access_usage_weight": "Imposta la confidence degli utilizzi Quick Access da 0 a 100."
         }
+      },
+      "adaptive": {
+        "title": "Apprendimento adattivo",
+        "description": "Configura il livello locale e spiegabile che impara sequenze e utilità dei suggerimenti.",
+        "data": {
+          "adaptive_learning": "Abilita apprendimento adattivo",
+          "sequence_learning": "Abilita apprendimento sequenziale",
+          "sequence_window_minutes": "Finestra apprendimento sequenze",
+          "sequence_influence": "Influenza sequenze",
+          "minimum_transition_occurrences": "Occorrenze minime transizione",
+          "sequence_decay_days": "Decadimento memoria sequenze",
+          "ignored_suggestion_learning": "Impara dai suggerimenti ignorati",
+          "suggestion_acceptance_window_minutes": "Finestra accettazione suggerimento",
+          "minimum_exposures": "Esposizioni minime prima della penalità",
+          "ignored_suggestion_penalty": "Penalità suggerimenti ignorati",
+          "acceptance_boost": "Boost accettazione",
+          "prediction_influence": "Influenza previsione",
+          "learning_scope": "Ambito apprendimento",
+          "adaptive_retention_days": "Conservazione apprendimento adattivo"
+        },
+        "data_description": {
+          "adaptive_learning": "Aggiunge segnali locali di sequenza e feedback dopo il punteggio statistico esistente.",
+          "sequence_learning": "Impara quale azione significativa tende a seguirne un’altra.",
+          "sequence_window_minutes": "Solo le azioni entro questo intervallo possono formare una transizione.",
+          "sequence_influence": "Limita quanto l’evidenza sequenziale può influire su un candidato.",
+          "minimum_transition_occurrences": "Una transizione non ha effetto finché non raggiunge questo supporto.",
+          "sequence_decay_days": "Le transizioni più vecchie perdono peso gradualmente.",
+          "ignored_suggestion_learning": "Impara dai suggerimenti accettati o ignorati ripetutamente.",
+          "suggestion_acceptance_window_minutes": "Un’azione corrispondente entro questa finestra accetta il suggerimento.",
+          "minimum_exposures": "Sotto questa soglia non viene applicata alcuna penalità.",
+          "ignored_suggestion_penalty": "Forza massima della penalità moderata e recuperabile.",
+          "acceptance_boost": "Boost massimo per suggerimenti scelti spesso in un contesto simile.",
+          "prediction_influence": "Combina il target adattivo con il punteggio base invariato.",
+          "learning_scope": "Hybrid preferisce dati utente sufficienti e altrimenti usa quelli globali.",
+          "adaptive_retention_days": "Le esposizioni grezze e gli aggregati obsoleti vengono rimossi dopo questo periodo."
+        }
+      },
+      "adaptive_sources": {
+        "title": "Pesi origini adattive",
+        "description": "Imposta quanto ogni origine classificata contribuisce ai pattern adattivi.",
+        "data": {
+          "adaptive_weight_manual": "Peso UI manuale",
+          "adaptive_weight_assist": "Peso Assist",
+          "adaptive_weight_quick_access": "Peso Accesso rapido",
+          "adaptive_weight_apple_watch": "Peso Apple Watch",
+          "adaptive_weight_shortcut": "Peso Shortcut",
+          "adaptive_weight_script": "Peso script",
+          "adaptive_weight_automation": "Peso automazioni",
+          "adaptive_weight_unknown": "Peso origine sconosciuta"
+        }
       }
     },
     "error": {
@@ -227,7 +281,9 @@
       "entry_not_loaded": "Questa istanza deve essere caricata.",
       "presence_required": "Scegli almeno un’entità di presenza per la modalità che richiede qualcuno a casa.",
       "api_key_required": "Inserisci una API key.",
-      "entry_required": "Scegli un'istanza quando ne è configurata più di una."
+      "entry_required": "Scegli un'istanza quando ne è configurata più di una.",
+      "user_required": "Inserisci un ID utente.",
+      "entity_required": "Seleziona un’entità."
     }
   },
   "entity": {
@@ -247,13 +303,18 @@
               "presence_habit": "Usato spesso con la presenza attuale",
               "context_habit": "Usato spesso nel contesto attuale della casa",
               "area_habit": "Rilevante per l’area attualmente occupata",
-              "ai_selected": "Selezionato dal riordino AI"
+              "ai_selected": "Selezionato dal riordino AI",
+              "sequence_habit": "Usato spesso dopo l’azione recente",
+              "accepted_habit": "Suggerimento scelto spesso in questo contesto"
             }
           }
         }
       },
       "quick_access_slot": {
         "name": "Controllo contestuale {slot}"
+      },
+      "adaptive_learning": {
+        "name": "Confidenza apprendimento adattivo"
       }
     }
   },
@@ -272,12 +333,18 @@
     },
     "entry_required": {
       "message": "Scegli un'istanza quando ne è configurata più di una."
+    },
+    "user_required": {
+      "message": "È richiesto un ID utente per questa modalità."
+    },
+    "entity_required": {
+      "message": "È richiesta un’entità per questa modalità."
     }
   },
   "services": {
     "reset_learning": {
       "name": "Reset apprendimento",
-      "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup.",
+      "description": "Cancella in modo selettivo storico e apprendimento adattivo. Richiede conferma.",
       "fields": {
         "config_entry_id": {
           "name": "Istanza integrazione"
@@ -293,6 +360,10 @@
         "confirm": {
           "name": "Conferma reset apprendimento",
           "description": "Obbligatorio. Senza filtri cancella tutto l’apprendimento dell’istanza. Ripristinabile solo da backup."
+        },
+        "mode": {
+          "name": "Modalità reset",
+          "description": "Scegli quale parte del modello eliminare."
         }
       }
     },
@@ -334,6 +405,21 @@
         "source": {
           "name": "Origine",
           "description": "Usata solo per apprendimento e diagnostica."
+        }
+      }
+    },
+    "get_learning_stats": {
+      "name": "Statistiche apprendimento",
+      "description": "Restituisce solo aggregati diagnostici; non modifica il modello.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Istanza integrazione"
+        },
+        "entity_id": {
+          "name": "Entità opzionale"
+        },
+        "user_id": {
+          "name": "ID utente opzionale"
         }
       }
     }
@@ -475,6 +561,60 @@
         "60": "1 minuto",
         "120": "2 minuti",
         "300": "5 minuti"
+      }
+    },
+    "sequence_window_minutes": {
+      "options": {
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min",
+        "60": "60 min",
+        "120": "120 min"
+      }
+    },
+    "sequence_decay_days": {
+      "options": {
+        "7": "7 giorni",
+        "14": "14 giorni",
+        "30": "30 giorni",
+        "60": "60 giorni",
+        "90": "90 giorni"
+      }
+    },
+    "suggestion_acceptance_window_minutes": {
+      "options": {
+        "2": "2 min",
+        "5": "5 min",
+        "10": "10 min",
+        "15": "15 min",
+        "30": "30 min"
+      }
+    },
+    "learning_scope": {
+      "options": {
+        "global": "Globale",
+        "user": "Per utente",
+        "hybrid": "Ibrido"
+      }
+    },
+    "adaptive_retention_days": {
+      "options": {
+        "30": "30 giorni",
+        "60": "60 giorni",
+        "90": "90 giorni",
+        "180": "180 giorni",
+        "365": "365 giorni"
+      }
+    },
+    "reset_mode": {
+      "options": {
+        "all": "Tutto",
+        "historical": "Storico utilizzi",
+        "sequence": "Sequenze",
+        "feedback": "Feedback suggerimenti",
+        "user": "Utente specifico",
+        "entity": "Entità specifica"
       }
     }
   }
