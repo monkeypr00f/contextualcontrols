@@ -300,7 +300,8 @@
               "context_habit": "Usato spesso nel contesto attuale della casa",
               "area_habit": "Rilevante per l’area attualmente occupata",
               "ai_selected": "Selezionato dal riordino AI",
-              "sequence_habit": "Usato spesso dopo l’azione recente"
+              "sequence_habit": "Usato spesso dopo l’azione recente",
+              "accepted_habit": "Suggerimento scelto spesso in questo contesto"
             }
           }
         }

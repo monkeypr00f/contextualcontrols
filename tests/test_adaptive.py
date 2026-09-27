@@ -2,7 +2,11 @@
 
 from datetime import UTC, datetime, timedelta
 
-from custom_components.contextual_controls.adaptive import AdaptiveSettings, LearningEngine
+from custom_components.contextual_controls.adaptive import (
+    AdaptiveSettings,
+    LearningEngine,
+    context_fingerprint,
+)
 from custom_components.contextual_controls.models import Ranked, Usage
 
 START = datetime(2026, 9, 1, 20, tzinfo=UTC)
@@ -75,3 +79,96 @@ def test_sequence_persistence_round_trip_and_cleanup():
     assert restored.top_predecessors("script.goodnight")[0]["count"] == 3
     assert restored.cleanup(moment + timedelta(days=91), 90) > 0
     assert not restored.transitions
+
+
+def expose(
+    engine: LearningEngine,
+    entity: str,
+    moment: datetime,
+    settings: AdaptiveSettings,
+    *,
+    rank: int = 1,
+    user: str | None = "alice",
+) -> str:
+    fingerprint = context_fingerprint(moment, True)
+    engine.record_exposure(
+        [{"entity_id": entity, "rank": rank, "score": 0.6}],
+        moment,
+        settings,
+        context_hash=fingerprint,
+        confidence=1,
+        user_id=user,
+        force=True,
+    )
+    return fingerprint
+
+
+def test_ignored_suggestion_requires_minimum_exposures_and_is_smoothed():
+    settings = AdaptiveSettings(minimum_exposures=5, acceptance_window_minutes=10)
+    engine = LearningEngine()
+    moment = START
+    context = ""
+    for _index in range(4):
+        context = expose(engine, "climate.bedroom", moment, settings)
+        moment += timedelta(minutes=11)
+        engine.cleanup(moment, 90, settings)
+    before = engine.feedback_signal("climate.bedroom", context, settings, user_id="alice")
+    assert before.ignore_penalty == 0
+    expose(engine, "climate.bedroom", moment, settings)
+    moment += timedelta(minutes=11)
+    engine.cleanup(moment, 90, settings)
+    after = engine.feedback_signal("climate.bedroom", context, settings, user_id="alice")
+    assert 0 < after.acceptance_rate < 0.5
+    assert 0 < after.ignore_penalty < 1
+
+
+def test_accepted_suggestion_and_acceptance_boost():
+    settings = AdaptiveSettings(minimum_exposures=3, acceptance_window_minutes=10)
+    engine = LearningEngine()
+    moment = START
+    context = ""
+    for _index in range(5):
+        context = expose(engine, "cover.bedroom", moment, settings)
+        used = action("cover.bedroom", moment + timedelta(minutes=2))
+        assert engine.resolve_exposure(used, settings, now=used.timestamp) == 1
+        moment += timedelta(minutes=12)
+    signal = engine.feedback_signal("cover.bedroom", context, settings, user_id="alice")
+    assert signal.acceptance_rate > 0.5
+    assert signal.acceptance_score > 0
+    assert signal.ignore_penalty == 0
+    base = [Ranked("cover.bedroom", 0.5, "habit")]
+    assert engine.apply_adaptive(base, moment, settings, "alice", True, context)[0].score > 0.5
+
+
+def test_rank_visibility_weights_ignored_feedback():
+    settings = AdaptiveSettings(minimum_exposures=3, acceptance_window_minutes=2)
+    engine = LearningEngine()
+    moment = START
+    for _index in range(5):
+        context = expose(engine, "light.first", moment, settings, rank=1)
+        expose(engine, "light.sixth", moment, settings, rank=6)
+        moment += timedelta(minutes=3)
+        engine.cleanup(moment, 90, settings)
+    first = engine.feedback_signal("light.first", context, settings, user_id="alice")
+    sixth = engine.feedback_signal("light.sixth", context, settings, user_id="alice")
+    assert first.ignore_penalty > sixth.ignore_penalty
+
+
+def test_acceptance_recovery_reduces_ignore_penalty():
+    settings = AdaptiveSettings(minimum_exposures=3, acceptance_window_minutes=2)
+    engine = LearningEngine()
+    moment = START
+    context = ""
+    for _index in range(6):
+        context = expose(engine, "light.recover", moment, settings)
+        moment += timedelta(minutes=3)
+        engine.cleanup(moment, 90, settings)
+    initial = engine.feedback_signal("light.recover", context, settings, user_id="alice")
+    for _index in range(10):
+        expose(engine, "light.recover", moment, settings)
+        used = action("light.recover", moment + timedelta(seconds=30))
+        engine.resolve_exposure(used, settings, now=used.timestamp)
+        moment += timedelta(minutes=3)
+    recovered = engine.feedback_signal("light.recover", context, settings, user_id="alice")
+    assert recovered.ignore_penalty < initial.ignore_penalty
+    assert recovered.acceptance_rate > initial.acceptance_rate

@@ -67,6 +67,7 @@ def test_reasons_are_translated():
         "area_habit",
         "ai_selected",
         "sequence_habit",
+        "accepted_habit",
     }
 
 

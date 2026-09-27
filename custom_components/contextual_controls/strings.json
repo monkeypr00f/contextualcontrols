@@ -300,7 +300,8 @@
               "context_habit": "Frequently used in the current home context",
               "area_habit": "Relevant to the currently occupied area",
               "ai_selected": "Selected by AI reranking",
-              "sequence_habit": "Often used after the recent action"
+              "sequence_habit": "Often used after the recent action",
+              "accepted_habit": "Suggestion often selected in this context"
             }
           }
         }

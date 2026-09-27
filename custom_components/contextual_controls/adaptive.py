@@ -5,6 +5,8 @@ This module has no Home Assistant imports so its behavior is easy to test.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, replace
@@ -49,6 +51,11 @@ class AdaptiveSettings:
     prediction_influence: float = 35
     learning_scope: str = "hybrid"
     retention_days: int = 90
+    ignored_suggestion_learning: bool = True
+    acceptance_window_minutes: int = 10
+    minimum_exposures: int = 5
+    ignored_penalty_strength: float = 25
+    acceptance_boost: float = 15
     source_weights: dict[str, float] = field(default_factory=dict)
 
 
@@ -136,6 +143,155 @@ class SequenceSignal:
     median_delay_seconds: float = 0.0
 
 
+@dataclass(slots=True)
+class Exposure:
+    timestamp: datetime
+    entity_id: str
+    rank: int
+    base_rank: int
+    adaptive_rank: int
+    score: float
+    context_hash: str
+    slot: int
+    generation_id: int
+    source: str = "unknown"
+    confidence: float = 0.35
+    user_id: str | None = None
+    used: bool = False
+    used_after_seconds: float | None = None
+    resolved: bool = False
+    metric_counted: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "entity_id": self.entity_id,
+            "rank": self.rank,
+            "base_rank": self.base_rank,
+            "adaptive_rank": self.adaptive_rank,
+            "score": self.score,
+            "context_hash": self.context_hash,
+            "slot": self.slot,
+            "generation_id": self.generation_id,
+            "source": self.source,
+            "confidence": self.confidence,
+            "user_id": self.user_id,
+            "used": self.used,
+            "used_after_seconds": self.used_after_seconds,
+            "resolved": self.resolved,
+            "metric_counted": self.metric_counted,
+        }
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> Exposure:
+        return cls(
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+            entity_id=str(row["entity_id"]),
+            rank=max(1, int(row["rank"])),
+            base_rank=max(0, int(row.get("base_rank", 0))),
+            adaptive_rank=max(0, int(row.get("adaptive_rank", 0))),
+            score=max(0.0, min(1.0, float(row.get("score", 0)))),
+            context_hash=str(row.get("context_hash", "*")),
+            slot=max(1, int(row.get("slot", row["rank"]))),
+            generation_id=max(0, int(row.get("generation_id", 0))),
+            source=str(row.get("source", "unknown")),
+            confidence=max(0.0, min(1.0, float(row.get("confidence", 0.35)))),
+            user_id=row.get("user_id") if isinstance(row.get("user_id"), str) else None,
+            used=bool(row.get("used", False)),
+            used_after_seconds=(
+                max(0.0, float(row["used_after_seconds"]))
+                if row.get("used_after_seconds") is not None
+                else None
+            ),
+            resolved=bool(row.get("resolved", False)),
+            metric_counted=bool(row.get("metric_counted", False)),
+        )
+
+
+@dataclass(slots=True)
+class FeedbackStat:
+    profile: str
+    entity_id: str
+    context_hash: str
+    exposures: int = 0
+    accepted: int = 0
+    ignored: int = 0
+    exposure_weight: float = 0.0
+    accepted_weight: float = 0.0
+    ignored_weight: float = 0.0
+    last_seen: datetime | None = None
+
+    def observe(self, accepted: bool, weight: float, moment: datetime) -> None:
+        self.exposures += 1
+        self.exposure_weight += weight
+        if accepted:
+            self.accepted += 1
+            self.accepted_weight += weight
+        else:
+            self.ignored += 1
+            self.ignored_weight += weight
+        self.last_seen = moment
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "profile": self.profile,
+            "entity_id": self.entity_id,
+            "context_hash": self.context_hash,
+            "exposures": self.exposures,
+            "accepted": self.accepted,
+            "ignored": self.ignored,
+            "exposure_weight": self.exposure_weight,
+            "accepted_weight": self.accepted_weight,
+            "ignored_weight": self.ignored_weight,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+        }
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> FeedbackStat:
+        return cls(
+            profile=str(row["profile"]),
+            entity_id=str(row["entity_id"]),
+            context_hash=str(row.get("context_hash", "*")),
+            exposures=max(0, int(row.get("exposures", 0))),
+            accepted=max(0, int(row.get("accepted", 0))),
+            ignored=max(0, int(row.get("ignored", 0))),
+            exposure_weight=max(0.0, float(row.get("exposure_weight", 0))),
+            accepted_weight=max(0.0, float(row.get("accepted_weight", 0))),
+            ignored_weight=max(0.0, float(row.get("ignored_weight", 0))),
+            last_seen=(datetime.fromisoformat(row["last_seen"]) if row.get("last_seen") else None),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackSignal:
+    acceptance_score: float = 0.0
+    acceptance_rate: float = 0.5
+    ignore_penalty: float = 0.0
+    confidence: float = 0.0
+    exposures: int = 0
+
+
+def context_fingerprint(
+    moment: datetime,
+    presence_home: bool | None,
+    context_states: tuple[tuple[str, str], ...] = (),
+) -> str:
+    """Hash only a compact segment and explicitly configured context states."""
+    document = {
+        "time": time_bucket(moment),
+        "day": day_bucket(moment),
+        "presence": presence_bucket(presence_home),
+        "context": sorted(context_states),
+    }
+    return hashlib.sha256(
+        json.dumps(document, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
+def visibility_weight(rank: int) -> float:
+    return max(0.35, 1.0 - 0.1 * max(0, rank - 1))
+
+
 class LearningEngine:
     """Incremental transition model with bounded ephemeral action buffers."""
 
@@ -143,6 +299,11 @@ class LearningEngine:
         self.transitions: dict[tuple[str, str, str], TransitionStat] = {}
         self._recent_by_actor: dict[str, deque[Usage]] = defaultdict(lambda: deque(maxlen=5))
         self._latest_action: Usage | None = None
+        self.exposures: list[Exposure] = []
+        self.feedback: dict[tuple[str, str, str], FeedbackStat] = {}
+        self.generation = 0
+        self._last_exposure_fingerprint: tuple[tuple[str, ...], str, str | None] | None = None
+        self._last_exposure_at: datetime | None = None
         self.rejected = 0
         if data:
             self.load(data)
@@ -160,13 +321,39 @@ class LearningEngine:
                 self.transitions[(stat.profile, stat.from_entity, stat.to_entity)] = stat
             except KeyError, TypeError, ValueError, OverflowError:
                 self.rejected += 1
+        exposure_rows = data.get("exposures", [])
+        feedback_rows = data.get("feedback", [])
+        if not isinstance(exposure_rows, list) or not isinstance(feedback_rows, list):
+            self.rejected += 1
+            return
+        for row in exposure_rows:
+            try:
+                exposure = Exposure.from_dict(row)
+                self.exposures.append(exposure)
+                self.generation = max(self.generation, exposure.generation_id)
+            except KeyError, TypeError, ValueError, OverflowError:
+                self.rejected += 1
+        for row in feedback_rows:
+            try:
+                feedback_stat = FeedbackStat.from_dict(row)
+                self.feedback[
+                    (feedback_stat.profile, feedback_stat.entity_id, feedback_stat.context_hash)
+                ] = feedback_stat
+            except KeyError, TypeError, ValueError, OverflowError:
+                self.rejected += 1
 
     def export(self) -> dict[str, Any]:
         return {
             "transitions": [
                 stat.to_dict()
                 for _key, stat in sorted(self.transitions.items(), key=lambda item: item[0])
-            ]
+            ],
+            "exposures": [row.to_dict() for row in self.exposures],
+            "feedback": [
+                stat.to_dict()
+                for _key, stat in sorted(self.feedback.items(), key=lambda item: item[0])
+            ],
+            "metrics": {},
         }
 
     @staticmethod
@@ -286,7 +473,198 @@ class LearningEngine:
             median_delay_seconds=round(stat.median_delay_seconds, 1),
         )
 
-    def cleanup(self, now: datetime, retention_days: int) -> int:
+    def record_exposure(
+        self,
+        rows: list[dict[str, Any]],
+        now: datetime,
+        settings: AdaptiveSettings,
+        *,
+        context_hash: str,
+        source: str = "unknown",
+        confidence: float = 0.35,
+        user_id: str | None = None,
+        base_ranks: dict[str, int] | None = None,
+        adaptive_ranks: dict[str, int] | None = None,
+        force: bool = False,
+    ) -> int | None:
+        """Persist a debounced ranking exposure without implying it was visible."""
+        if not settings.enabled or not settings.ignored_suggestion_learning or not rows:
+            return None
+        entities = tuple(str(row["entity_id"]) for row in rows)
+        fingerprint = (entities, context_hash, user_id)
+        if (
+            not force
+            and fingerprint == self._last_exposure_fingerprint
+            and self._last_exposure_at is not None
+            and now - self._last_exposure_at < timedelta(minutes=settings.acceptance_window_minutes)
+        ):
+            return None
+        self.generation += 1
+        for index, row in enumerate(rows, 1):
+            entity_id = str(row["entity_id"])
+            self.exposures.append(
+                Exposure(
+                    timestamp=now,
+                    entity_id=entity_id,
+                    rank=int(row.get("rank", index)),
+                    base_rank=(base_ranks or {}).get(entity_id, 0),
+                    adaptive_rank=(adaptive_ranks or {}).get(
+                        entity_id, int(row.get("rank", index))
+                    ),
+                    score=float(row.get("score", 0)),
+                    context_hash=context_hash,
+                    slot=int(row.get("slot", index)),
+                    generation_id=self.generation,
+                    source=source,
+                    confidence=max(0.0, min(1.0, confidence)),
+                    user_id=user_id,
+                )
+            )
+        self._last_exposure_fingerprint = fingerprint
+        self._last_exposure_at = now
+        return self.generation
+
+    def _observe_feedback(self, exposure: Exposure, accepted: bool, moment: datetime) -> None:
+        rank_weight = visibility_weight(exposure.rank)
+        weight = exposure.confidence * rank_weight
+        profiles = [GLOBAL_PROFILE]
+        if exposure.user_id:
+            profiles.append(exposure.user_id)
+        for profile in profiles:
+            for context_hash in ("*", exposure.context_hash):
+                key = (profile, exposure.entity_id, context_hash)
+                stat = self.feedback.get(key)
+                if stat is None:
+                    stat = self.feedback[key] = FeedbackStat(
+                        profile, exposure.entity_id, context_hash
+                    )
+                stat.observe(accepted, weight, moment)
+
+    def _expire_exposures(self, now: datetime, settings: AdaptiveSettings) -> int:
+        cutoff = now - timedelta(minutes=settings.acceptance_window_minutes)
+        expired = 0
+        for exposure in self.exposures:
+            if not exposure.resolved and exposure.timestamp <= cutoff:
+                exposure.resolved = True
+                self._observe_feedback(exposure, False, now)
+                expired += 1
+        return expired
+
+    def resolve_exposure(
+        self,
+        record: Usage,
+        settings: AdaptiveSettings,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Resolve the newest matching active exposure as accepted."""
+        if not settings.enabled or not settings.ignored_suggestion_learning:
+            return 0
+        moment = now or record.timestamp
+        self._expire_exposures(moment, settings)
+        window_start = moment - timedelta(minutes=settings.acceptance_window_minutes)
+        matches = [
+            exposure
+            for exposure in self.exposures
+            if not exposure.resolved
+            and exposure.entity_id == record.entity_id
+            and window_start <= exposure.timestamp <= moment
+            and (exposure.user_id is None or exposure.user_id == record.user_id)
+        ]
+        if not matches:
+            return 0
+        exposure = max(matches, key=lambda row: row.timestamp)
+        exposure.used = True
+        exposure.resolved = True
+        exposure.used_after_seconds = max(0.0, (moment - exposure.timestamp).total_seconds())
+        if exposure.user_id is None and record.user_id:
+            exposure.user_id = record.user_id
+        self._observe_feedback(exposure, True, moment)
+        return 1
+
+    def _select_feedback(
+        self,
+        entity_id: str,
+        context_hash: str,
+        user_id: str | None,
+        settings: AdaptiveSettings,
+    ) -> FeedbackStat | None:
+        def for_profile(profile: str) -> FeedbackStat | None:
+            contextual = self.feedback.get((profile, entity_id, context_hash))
+            aggregate = self.feedback.get((profile, entity_id, "*"))
+            if contextual and contextual.exposures >= settings.minimum_exposures:
+                return contextual
+            return aggregate
+
+        global_stat = for_profile(GLOBAL_PROFILE)
+        user_stat = for_profile(user_id) if user_id else None
+        if settings.learning_scope == "global":
+            return global_stat
+        if settings.learning_scope == "user":
+            return user_stat
+        if user_stat and user_stat.exposures >= settings.minimum_exposures:
+            return user_stat
+        return global_stat
+
+    def feedback_signal(
+        self,
+        entity_id: str,
+        context_hash: str,
+        settings: AdaptiveSettings,
+        *,
+        user_id: str | None = None,
+    ) -> FeedbackSignal:
+        if not settings.enabled or not settings.ignored_suggestion_learning:
+            return FeedbackSignal()
+        stat = self._select_feedback(entity_id, context_hash, user_id, settings)
+        if stat is None or stat.exposures == 0:
+            return FeedbackSignal()
+        acceptance_rate = (stat.accepted_weight + 2) / (stat.exposure_weight + 4)
+        confidence = 1 - math.exp(-stat.exposures / max(1, settings.minimum_exposures))
+        acceptance = max(0.0, (acceptance_rate - 0.5) * 2) * confidence
+        ignored = 0.0
+        if stat.exposures >= settings.minimum_exposures:
+            ignored = max(0.0, (0.5 - acceptance_rate) * 2) * confidence
+        return FeedbackSignal(
+            acceptance_score=round(min(1.0, acceptance), 4),
+            acceptance_rate=round(acceptance_rate, 4),
+            ignore_penalty=round(min(1.0, ignored), 4),
+            confidence=round(confidence, 4),
+            exposures=stat.exposures,
+        )
+
+    def get_acceptance_score(
+        self,
+        entity_id: str,
+        context_hash: str,
+        settings: AdaptiveSettings,
+        *,
+        user_id: str | None = None,
+    ) -> float:
+        return self.feedback_signal(
+            entity_id, context_hash, settings, user_id=user_id
+        ).acceptance_score
+
+    def get_ignore_penalty(
+        self,
+        entity_id: str,
+        context_hash: str,
+        settings: AdaptiveSettings,
+        *,
+        user_id: str | None = None,
+    ) -> float:
+        return self.feedback_signal(
+            entity_id, context_hash, settings, user_id=user_id
+        ).ignore_penalty
+
+    def cleanup(
+        self,
+        now: datetime,
+        retention_days: int,
+        settings: AdaptiveSettings | None = None,
+    ) -> int:
+        if settings is not None:
+            self._expire_exposures(now, settings)
         cutoff = now - timedelta(days=retention_days)
         stale = [
             key
@@ -295,7 +673,17 @@ class LearningEngine:
         ]
         for key in stale:
             del self.transitions[key]
-        return len(stale)
+        cutoff = now - timedelta(days=retention_days)
+        before = len(self.exposures)
+        self.exposures = [row for row in self.exposures if row.timestamp >= cutoff]
+        stale_feedback = [
+            key
+            for key, stat in self.feedback.items()
+            if stat.last_seen is None or stat.last_seen < cutoff
+        ]
+        for key in stale_feedback:
+            del self.feedback[key]
+        return len(stale) + before - len(self.exposures) + len(stale_feedback)
 
     def reset_sequence(self, *, entity_id: str | None = None, user_id: str | None = None) -> None:
         self.transitions = {
@@ -309,6 +697,24 @@ class LearningEngine:
         if entity_id is None and user_id is None:
             self._recent_by_actor.clear()
             self._latest_action = None
+
+    def reset_feedback(self, *, entity_id: str | None = None, user_id: str | None = None) -> None:
+        self.feedback = {
+            key: stat
+            for key, stat in self.feedback.items()
+            if not (
+                (entity_id is None or stat.entity_id == entity_id)
+                and (user_id is None or stat.profile == user_id)
+            )
+        }
+        self.exposures = [
+            row
+            for row in self.exposures
+            if not (
+                (entity_id is None or row.entity_id == entity_id)
+                and (user_id is None or row.user_id == user_id)
+            )
+        ]
 
     def top_predecessors(
         self, entity_id: str, *, user_id: str | None = None, limit: int = 5
@@ -336,22 +742,27 @@ class LearningEngine:
         return {
             "sequence_patterns": len(self.transitions),
             "supported_sequence_patterns": supported,
+            "suggestion_exposures": len(self.exposures),
+            "feedback_patterns": len(self.feedback),
             "adaptive_rejected_records": self.rejected,
         }
 
-    def apply_sequence(
+    def apply_adaptive(
         self,
         ranked: list[Ranked],
         now: datetime,
         settings: AdaptiveSettings,
         user_id: str | None = None,
         presence_home: bool | None = None,
+        context_hash: str = "*",
     ) -> list[Ranked]:
-        """Add a bounded sequence signal after the unchanged base scorer."""
-        if not settings.enabled or not settings.sequence_enabled:
+        """Blend bounded sequence and feedback signals after the base scorer."""
+        if not settings.enabled:
             return [replace(item, base_score=item.score) for item in ranked]
         prediction_weight = max(0.0, min(1.0, settings.prediction_influence / 100))
         sequence_weight = max(0.0, min(1.0, settings.sequence_influence / 100))
+        acceptance_weight = max(0.0, min(1.0, settings.acceptance_boost / 100))
+        penalty_weight = max(0.0, min(1.0, settings.ignored_penalty_strength / 100))
         result: list[Ranked] = []
         for item in ranked:
             signal = self.get_sequence_score(
@@ -361,18 +772,48 @@ class LearningEngine:
                 user_id=user_id,
                 presence_home=presence_home,
             )
-            target = item.score + sequence_weight * signal.score * (1 - item.score)
+            feedback = self.feedback_signal(item.entity_id, context_hash, settings, user_id=user_id)
+            target = (
+                item.score
+                + sequence_weight * signal.score * (1 - item.score)
+                + acceptance_weight * feedback.acceptance_score * (1 - item.score)
+                - penalty_weight * feedback.ignore_penalty * item.score
+            )
             final = item.score + prediction_weight * (min(1.0, target) - item.score)
-            reason = "sequence_habit" if signal.score > 0.25 else item.reason_key
+            reason = (
+                "sequence_habit"
+                if signal.score > 0.25
+                else "accepted_habit"
+                if feedback.acceptance_score > 0.2
+                else item.reason_key
+            )
             result.append(
                 replace(
                     item,
                     score=round(max(0.0, min(1.0, final)), 4),
                     reason_key=reason,
-                    source="adaptive" if signal.score else item.source,
+                    source=(
+                        "adaptive"
+                        if signal.score or feedback.acceptance_score or feedback.ignore_penalty
+                        else item.source
+                    ),
                     base_score=item.score,
                     sequence_score=signal.score,
-                    adaptive_confidence=signal.confidence,
+                    acceptance_score=feedback.acceptance_score,
+                    acceptance_rate=feedback.acceptance_rate,
+                    ignore_penalty=feedback.ignore_penalty,
+                    adaptive_confidence=max(signal.confidence, feedback.confidence),
                 )
             )
         return sorted(result, key=lambda item: (-item.score, item.entity_id))
+
+    def apply_sequence(
+        self,
+        ranked: list[Ranked],
+        now: datetime,
+        settings: AdaptiveSettings,
+        user_id: str | None = None,
+        presence_home: bool | None = None,
+    ) -> list[Ranked]:
+        """Compatibility wrapper retained for focused sequence tests."""
+        return self.apply_adaptive(ranked, now, settings, user_id, presence_home)
