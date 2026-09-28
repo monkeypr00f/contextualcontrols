@@ -132,6 +132,9 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
             "sequence_patterns",
             "sequence_chain_patterns",
             "learning_records",
+            "top_transitions",
+            "top_sequences",
+            "entity_feedback",
         }
     )
 
@@ -156,6 +159,7 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         metrics = self.coordinator.history.learning.metrics_snapshot()
+        dashboard = self.coordinator.history.learning.dashboard_snapshot()
         return {
             "top1_hit_rate": metrics["top1_hit_rate"],
             "top3_hit_rate": metrics["top3_hit_rate"],
@@ -167,4 +171,5 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
             "learning_records": len(self.coordinator.history.records),
             "learning_confidence": metrics["learning_confidence"],
             "last_learning_update": metrics["last_learning_update"],
+            **dashboard,
         }

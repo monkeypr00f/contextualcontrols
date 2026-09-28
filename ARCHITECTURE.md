@@ -347,6 +347,13 @@ feedback below minimum exposures has no penalty, and the existing scorer is the
 only signal. Season, temperature, sunlight and sunrise/sunset can later extend
 the compact context segment without changing the storage contract.
 
+The disabled-by-default learning sensor is also the stable frontend contract for
+the optional learning dashboard. It publishes bounded global summaries only:
+Top-1/Top-3 metrics, base/adaptive comparison, up to ten transitions, chains and
+entity feedback rows. It excludes user IDs, raw Usage records and context hashes.
+The separate HACS Dashboard package renders these cached attributes and never
+queries storage or changes the learning model.
+
 ## Verification policy
 
 Pure pytest tests exercise real scoring and policy. Following the user's

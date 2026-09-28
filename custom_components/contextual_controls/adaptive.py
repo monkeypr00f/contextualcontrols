@@ -1045,6 +1045,55 @@ class LearningEngine:
             for stat in matches[:limit]
         ]
 
+    def dashboard_snapshot(self, limit: int = 10) -> dict[str, Any]:
+        """Return bounded global aggregates suitable for a local diagnostic card."""
+        bounded = max(1, min(20, int(limit)))
+        transitions = [stat for stat in self.transitions.values() if stat.profile == GLOBAL_PROFILE]
+        transitions.sort(key=lambda stat: (-stat.count, stat.from_entity, stat.to_entity))
+        chains = [stat for stat in self.chains.values() if stat.profile == GLOBAL_PROFILE]
+        chains.sort(
+            key=lambda stat: (-stat.count, stat.first_entity, stat.second_entity, stat.to_entity)
+        )
+        feedback = [
+            stat
+            for stat in self.feedback.values()
+            if stat.profile == GLOBAL_PROFILE and stat.context_hash == "*"
+        ]
+        feedback.sort(key=lambda stat: (-stat.exposures, stat.entity_id))
+        return {
+            "top_transitions": [
+                {
+                    "from_entity_id": stat.from_entity,
+                    "to_entity_id": stat.to_entity,
+                    "count": stat.count,
+                    "confidence": round(1 - math.exp(-stat.count / 3), 4),
+                    "average_delay_seconds": round(stat.average_delay_seconds, 1),
+                }
+                for stat in transitions[:bounded]
+            ],
+            "top_sequences": [
+                {
+                    "entity_ids": [stat.first_entity, stat.second_entity, stat.to_entity],
+                    "count": stat.count,
+                    "confidence": round(1 - math.exp(-stat.count / 3), 4),
+                    "average_delay_seconds": round(stat.average_delay_seconds, 1),
+                }
+                for stat in chains[:bounded]
+            ],
+            "entity_feedback": [
+                {
+                    "entity_id": stat.entity_id,
+                    "suggestions": stat.exposures,
+                    "accepted": stat.accepted,
+                    "ignored": stat.ignored,
+                    "acceptance_rate": round(
+                        (stat.accepted_weight + 2) / (stat.exposure_weight + 4), 4
+                    ),
+                }
+                for stat in feedback[:bounded]
+            ],
+        }
+
     def entity_feedback_stats(
         self, entity_id: str, *, user_id: str | None = None
     ) -> dict[str, Any]:

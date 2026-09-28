@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.7.1. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.8.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -190,6 +190,12 @@ data:
   entity_id: script.buonanotte
 response_variable: learning
 ```
+
+Dalla versione 1.1.0 della Lovelace card è disponibile anche **Contextual
+Controls Learning**. Abilita il sensore diagnostico dalla pagina Entità, aggiungi
+la card dal selettore visuale e scegli quali sezioni mostrare: confronto ranking,
+transizioni A→B, sequenze A→B→C e acceptance per entità. Il sensore espone al
+frontend al massimo dieci righe per sezione e non include user ID o storico grezzo.
 
 Con debug attivo, `candidate_scores` include `base_score`, `sequence_score`,
 `sequence_depth`,

@@ -1,5 +1,12 @@
 # Verifica Phase 1 — 25 settembre 2026
 
+## Adaptive Learning dashboard 0.8.0
+
+- Il sensore diagnostico espone snapshot globali e limitati per transizioni, catene e feedback.
+- I test verificano ordinamento, limite, smoothing e assenza di profili/user ID nello snapshot.
+- La Lovelace card separata 1.1.0 ha editor visuale e test Node per registrazione, default,
+  formattazione percentuali/ritardi e suggerimento automatico del sensore corretto.
+
 ## Sequence chains 0.7.1
 
 - Le catene A→B→C usano esclusivamente le ultime due azioni significative dello stesso attore.
