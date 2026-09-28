@@ -359,3 +359,31 @@ def test_selective_sequence_and_feedback_reset():
     engine.reset_feedback(entity_id="script.goodnight")
     assert not engine.feedback
     assert not engine.exposures
+
+
+def test_dashboard_snapshot_is_bounded_global_and_explainable():
+    engine = LearningEngine()
+    moment = train_chain(engine)
+    settings = AdaptiveSettings(minimum_exposures=1, acceptance_window_minutes=10)
+    expose(engine, "script.goodnight", moment, settings)
+    engine.resolve_exposure(action("script.goodnight", moment + timedelta(minutes=1)), settings)
+
+    snapshot = engine.dashboard_snapshot(limit=1)
+    assert len(snapshot["top_transitions"]) == 1
+    assert len(snapshot["top_sequences"]) == 1
+    full_snapshot = engine.dashboard_snapshot(limit=20)
+    assert [
+        "media_player.tv",
+        "light.living_room",
+        "script.goodnight",
+    ] in [row["entity_ids"] for row in full_snapshot["top_sequences"]]
+    assert snapshot["entity_feedback"] == [
+        {
+            "entity_id": "script.goodnight",
+            "suggestions": 1,
+            "accepted": 1,
+            "ignored": 0,
+            "acceptance_rate": 0.6,
+        }
+    ]
+    assert "profile" not in str(snapshot)
