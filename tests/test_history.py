@@ -53,10 +53,18 @@ def test_v4_migration_adds_empty_adaptive_schema():
     assert migrated["records"] == old["records"]
     assert migrated["adaptive"] == {
         "transitions": [],
+        "chains": [],
         "exposures": [],
         "feedback": [],
         "metrics": {},
     }
+
+
+def test_v5_migration_preserves_adaptive_data_and_adds_chains():
+    old = encode([row()], {"transitions": [{"legacy": True}], "metrics": {}})
+    migrated = migrate_payload(5, old)
+    assert migrated["adaptive"]["transitions"] == [{"legacy": True}]
+    assert migrated["adaptive"]["chains"] == []
 
 
 @pytest.mark.parametrize(

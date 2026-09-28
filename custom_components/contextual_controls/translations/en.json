@@ -245,8 +245,8 @@
         },
         "data_description": {
           "adaptive_learning": "Adds local sequence and feedback signals after the existing statistical score.",
-          "sequence_learning": "Learns which significant action tends to follow another.",
-          "sequence_window_minutes": "Only actions within this delay can form a transition.",
+          "sequence_learning": "Learns which action or bounded three-step chain tends to come next.",
+          "sequence_window_minutes": "Each adjacent step must occur within this delay to form a sequence.",
           "sequence_influence": "Limits how strongly sequence evidence can affect a candidate.",
           "minimum_transition_occurrences": "A transition has no effect until it reaches this support.",
           "sequence_decay_days": "Older transitions progressively lose weight.",
@@ -305,6 +305,7 @@
               "area_habit": "Relevant to the currently occupied area",
               "ai_selected": "Selected by AI reranking",
               "sequence_habit": "Often used after the recent action",
+              "sequence_chain_habit": "Often used after this sequence",
               "accepted_habit": "Suggestion often selected in this context"
             }
           }

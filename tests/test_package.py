@@ -42,7 +42,7 @@ def test_hacs_structure_and_local_requirements():
     assert (COMPONENT / "brand" / "icon@2x.png").exists()
     from custom_components.contextual_controls.const import DEFAULTS, VERSION
 
-    assert manifest["version"] == VERSION == "0.7.0"
+    assert manifest["version"] == VERSION == "0.7.1"
     assert DEFAULTS["ai_provider"] == "disabled"
     assert DEFAULTS["ai_share_exact_timestamps"] is False
     assert DEFAULTS["ai_share_presence_information"] is False
@@ -67,6 +67,7 @@ def test_reasons_are_translated():
         "area_habit",
         "ai_selected",
         "sequence_habit",
+        "sequence_chain_habit",
         "accepted_habit",
     }
 

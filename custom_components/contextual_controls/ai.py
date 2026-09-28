@@ -71,6 +71,7 @@ def _candidate_payload(
             item["historical_score"] = row.get("score", 0)
             item["base_score"] = row.get("base_score", row.get("score", 0))
             item["sequence_score"] = row.get("sequence_score", 0)
+            item["sequence_depth"] = row.get("sequence_depth", 0)
             item["acceptance_rate"] = row.get("acceptance_rate", 0.5)
             item["ignore_penalty"] = row.get("ignore_penalty", 0)
             item["uses_in_time_window"] = row.get("count", 0)

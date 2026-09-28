@@ -45,6 +45,7 @@ class Ranked:
     context: float = 1.0
     base_score: float = 0.0
     sequence_score: float = 0.0
+    sequence_depth: int = 0
     acceptance_score: float = 0.0
     acceptance_rate: float = 0.5
     ignore_penalty: float = 0.0

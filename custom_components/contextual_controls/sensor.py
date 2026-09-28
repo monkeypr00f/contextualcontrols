@@ -130,6 +130,7 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
             "adaptive_top3_hit_rate",
             "accepted_rate",
             "sequence_patterns",
+            "sequence_chain_patterns",
             "learning_records",
         }
     )
@@ -162,6 +163,7 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
             "adaptive_top3_hit_rate": metrics["adaptive_top3_hit_rate"],
             "accepted_rate": metrics["accepted_rate"],
             "sequence_patterns": len(self.coordinator.history.learning.transitions),
+            "sequence_chain_patterns": len(self.coordinator.history.learning.chains),
             "learning_records": len(self.coordinator.history.records),
             "learning_confidence": metrics["learning_confidence"],
             "last_learning_update": metrics["last_learning_update"],
