@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.7.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.7.1. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -147,8 +147,9 @@ valori opachi, senza inferenze semantiche.
 ### Adaptive Learning
 
 Adaptive Learning è un livello locale e disattivabile applicato **dopo** il
-motore statistico esistente. Impara transizioni A→B tra sole azioni
-significative, per esempio `media_player.apple_tv` → `script.buonanotte`, e
+motore statistico esistente. Impara transizioni A→B e catene limitate A→B→C
+tra sole azioni significative, per esempio `media_player.apple_tv` →
+`light.soggiorno` → `script.buonanotte`, e
 misura quali suggerimenti vengono scelti entro la finestra di accettazione.
 Una transizione non influenza il ranking prima del supporto minimo configurato;
 le transizioni vecchie decadono e il ritardo osservato viene confrontato con il
@@ -191,6 +192,7 @@ response_variable: learning
 ```
 
 Con debug attivo, `candidate_scores` include `base_score`, `sequence_score`,
+`sequence_depth`,
 `acceptance_score`, `acceptance_rate`, `ignore_penalty`,
 `adaptive_confidence` e `final_score`. In modalità normale le spiegazioni
 restano positive o neutrali; il dettaglio degli ignore appare solo nel debug.

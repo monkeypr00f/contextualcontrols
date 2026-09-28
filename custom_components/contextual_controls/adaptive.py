@@ -133,12 +133,93 @@ class TransitionStat:
         )
 
 
+@dataclass(slots=True)
+class ChainStat:
+    """Compact evidence for one bounded A→B→C pattern."""
+
+    profile: str
+    first_entity: str
+    second_entity: str
+    to_entity: str
+    count: int = 0
+    weighted_count: float = 0.0
+    delay_sum: float = 0.0
+    delays: list[float] = field(default_factory=list)
+    last_seen: datetime | None = None
+    time_buckets: dict[str, float] = field(default_factory=dict)
+    day_buckets: dict[str, float] = field(default_factory=dict)
+    presence_buckets: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def average_delay_seconds(self) -> float:
+        return self.delay_sum / self.weighted_count if self.weighted_count else 0.0
+
+    @property
+    def median_delay_seconds(self) -> float:
+        return float(median(self.delays)) if self.delays else 0.0
+
+    def observe(self, delay: float, weight: float, moment: datetime, presence: bool | None) -> None:
+        self.count += 1
+        self.weighted_count += weight
+        self.delay_sum += delay * weight
+        self.delays.append(delay)
+        if len(self.delays) > MAX_DELAY_SAMPLES:
+            del self.delays[: len(self.delays) - MAX_DELAY_SAMPLES]
+        self.last_seen = moment
+        for mapping, key in (
+            (self.time_buckets, time_bucket(moment)),
+            (self.day_buckets, day_bucket(moment)),
+            (self.presence_buckets, presence_bucket(presence)),
+        ):
+            mapping[key] = mapping.get(key, 0.0) + weight
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "profile": self.profile,
+            "first": self.first_entity,
+            "second": self.second_entity,
+            "to": self.to_entity,
+            "count": self.count,
+            "weighted_count": self.weighted_count,
+            "delay_sum": self.delay_sum,
+            "delays": list(self.delays),
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            "time_buckets": dict(self.time_buckets),
+            "day_buckets": dict(self.day_buckets),
+            "presence_buckets": dict(self.presence_buckets),
+        }
+
+    @classmethod
+    def from_dict(cls, row: dict[str, Any]) -> ChainStat:
+        last_seen = datetime.fromisoformat(row["last_seen"]) if row.get("last_seen") else None
+        return cls(
+            profile=str(row["profile"]),
+            first_entity=str(row["first"]),
+            second_entity=str(row["second"]),
+            to_entity=str(row["to"]),
+            count=max(0, int(row.get("count", 0))),
+            weighted_count=max(0.0, float(row.get("weighted_count", 0))),
+            delay_sum=max(0.0, float(row.get("delay_sum", 0))),
+            delays=[max(0.0, float(value)) for value in row.get("delays", [])][-MAX_DELAY_SAMPLES:],
+            last_seen=last_seen,
+            time_buckets={
+                str(k): max(0.0, float(v)) for k, v in row.get("time_buckets", {}).items()
+            },
+            day_buckets={str(k): max(0.0, float(v)) for k, v in row.get("day_buckets", {}).items()},
+            presence_buckets={
+                str(k): max(0.0, float(v)) for k, v in row.get("presence_buckets", {}).items()
+            },
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SequenceSignal:
     score: float = 0.0
     confidence: float = 0.0
     count: int = 0
     predecessor: str | None = None
+    predecessors: tuple[str, ...] = ()
+    depth: int = 0
     average_delay_seconds: float = 0.0
     median_delay_seconds: float = 0.0
 
@@ -297,8 +378,9 @@ class LearningEngine:
 
     def __init__(self, data: dict[str, Any] | None = None) -> None:
         self.transitions: dict[tuple[str, str, str], TransitionStat] = {}
+        self.chains: dict[tuple[str, str, str, str], ChainStat] = {}
         self._recent_by_actor: dict[str, deque[Usage]] = defaultdict(lambda: deque(maxlen=5))
-        self._latest_action: Usage | None = None
+        self._recent_global: deque[Usage] = deque(maxlen=5)
         self.exposures: list[Exposure] = []
         self.feedback: dict[tuple[str, str, str], FeedbackStat] = {}
         self.generation = 0
@@ -330,6 +412,30 @@ class LearningEngine:
                 if not stat.from_entity or not stat.to_entity or stat.last_seen is None:
                     raise ValueError
                 self.transitions[(stat.profile, stat.from_entity, stat.to_entity)] = stat
+            except KeyError, TypeError, ValueError, OverflowError:
+                self.rejected += 1
+        chain_rows = data.get("chains", [])
+        if not isinstance(chain_rows, list):
+            self.rejected += 1
+            chain_rows = []
+        for row in chain_rows:
+            try:
+                chain_stat = ChainStat.from_dict(row)
+                if (
+                    not chain_stat.first_entity
+                    or not chain_stat.second_entity
+                    or not chain_stat.to_entity
+                    or chain_stat.last_seen is None
+                ):
+                    raise ValueError
+                self.chains[
+                    (
+                        chain_stat.profile,
+                        chain_stat.first_entity,
+                        chain_stat.second_entity,
+                        chain_stat.to_entity,
+                    )
+                ] = chain_stat
             except KeyError, TypeError, ValueError, OverflowError:
                 self.rejected += 1
         exposure_rows = data.get("exposures", [])
@@ -373,6 +479,10 @@ class LearningEngine:
                 stat.to_dict()
                 for _key, stat in sorted(self.transitions.items(), key=lambda item: item[0])
             ],
+            "chains": [
+                stat.to_dict()
+                for _key, stat in sorted(self.chains.items(), key=lambda item: item[0])
+            ],
             "exposures": [row.to_dict() for row in self.exposures],
             "feedback": [
                 stat.to_dict()
@@ -409,13 +519,14 @@ class LearningEngine:
         actor = record.user_id or UNKNOWN_ACTOR
         recent = self._recent_by_actor[actor]
         previous = recent[-1] if recent else None
+        first = recent[-2] if len(recent) >= 2 else None
         moment = local_timestamp or record.timestamp
+        profiles = [GLOBAL_PROFILE]
+        if record.user_id:
+            profiles.append(record.user_id)
         if previous is not None and previous.entity_id != record.entity_id:
             delay = (record.timestamp - previous.timestamp).total_seconds()
             if 0 < delay <= settings.sequence_window_minutes * 60:
-                profiles = [GLOBAL_PROFILE]
-                if record.user_id:
-                    profiles.append(record.user_id)
                 for profile in profiles:
                     key = (profile, previous.entity_id, record.entity_id)
                     stat = self.transitions.get(key)
@@ -424,8 +535,42 @@ class LearningEngine:
                             profile, previous.entity_id, record.entity_id
                         )
                     stat.observe(delay, weight, moment, record.presence_home)
+        if (
+            first is not None
+            and previous is not None
+            and first.entity_id != previous.entity_id
+            and previous.entity_id != record.entity_id
+        ):
+            first_delay = (previous.timestamp - first.timestamp).total_seconds()
+            second_delay = (record.timestamp - previous.timestamp).total_seconds()
+            if (
+                0 < first_delay <= settings.sequence_window_minutes * 60
+                and 0 < second_delay <= settings.sequence_window_minutes * 60
+            ):
+                chain_weight = min(
+                    self._weight(first, settings),
+                    self._weight(previous, settings),
+                    weight,
+                )
+                if chain_weight > 0:
+                    for profile in profiles:
+                        chain_key = (
+                            profile,
+                            first.entity_id,
+                            previous.entity_id,
+                            record.entity_id,
+                        )
+                        chain_stat = self.chains.get(chain_key)
+                        if chain_stat is None:
+                            chain_stat = self.chains[chain_key] = ChainStat(
+                                profile,
+                                first.entity_id,
+                                previous.entity_id,
+                                record.entity_id,
+                            )
+                        chain_stat.observe(second_delay, chain_weight, moment, record.presence_home)
         recent.append(record)
-        self._latest_action = record
+        self._recent_global.append(record)
         self.last_learning_update = record.timestamp
 
     @staticmethod
@@ -452,28 +597,35 @@ class LearningEngine:
             return user_stat
         return global_stat
 
-    def get_sequence_score(
+    def _select_chain(
         self,
-        entity_id: str,
+        first_entity: str,
+        second_entity: str,
+        to_entity: str,
+        user_id: str | None,
+        settings: AdaptiveSettings,
+    ) -> ChainStat | None:
+        global_stat = self.chains.get((GLOBAL_PROFILE, first_entity, second_entity, to_entity))
+        user_stat = (
+            self.chains.get((user_id, first_entity, second_entity, to_entity)) if user_id else None
+        )
+        if settings.learning_scope == "user":
+            return user_stat
+        if settings.learning_scope == "global":
+            return global_stat
+        if user_stat and user_stat.count >= settings.minimum_transition_occurrences:
+            return user_stat
+        return global_stat
+
+    def _sequence_signal(
+        self,
+        stat: TransitionStat | ChainStat | None,
+        delay: float,
         now: datetime,
         settings: AdaptiveSettings,
-        *,
-        user_id: str | None = None,
-        presence_home: bool | None = None,
+        presence_home: bool | None,
+        predecessors: tuple[str, ...],
     ) -> SequenceSignal:
-        if not settings.enabled or not settings.sequence_enabled:
-            return SequenceSignal()
-        previous: Usage | None
-        if user_id and self._recent_by_actor.get(user_id):
-            previous = self._recent_by_actor[user_id][-1]
-        else:
-            previous = self._latest_action
-        if previous is None or previous.entity_id == entity_id:
-            return SequenceSignal()
-        delay = now.timestamp() - previous.timestamp.timestamp()
-        if delay < 0 or delay > settings.sequence_window_minutes * 60:
-            return SequenceSignal()
-        stat = self._select_stat(previous.entity_id, entity_id, user_id, settings)
         if (
             stat is None
             or stat.count < settings.minimum_transition_occurrences
@@ -499,10 +651,66 @@ class LearningEngine:
             score=round(score, 4),
             confidence=round(confidence, 4),
             count=stat.count,
-            predecessor=previous.entity_id,
+            predecessor=predecessors[-1],
+            predecessors=predecessors,
+            depth=len(predecessors),
             average_delay_seconds=round(learned_delay, 1),
             median_delay_seconds=round(stat.median_delay_seconds, 1),
         )
+
+    def get_sequence_score(
+        self,
+        entity_id: str,
+        now: datetime,
+        settings: AdaptiveSettings,
+        *,
+        user_id: str | None = None,
+        presence_home: bool | None = None,
+    ) -> SequenceSignal:
+        if not settings.enabled or not settings.sequence_enabled:
+            return SequenceSignal()
+        recent = self._recent_by_actor.get(user_id) if user_id else self._recent_global
+        if not recent:
+            return SequenceSignal()
+        previous = recent[-1]
+        if previous is None or previous.entity_id == entity_id:
+            return SequenceSignal()
+        delay = now.timestamp() - previous.timestamp.timestamp()
+        if delay < 0 or delay > settings.sequence_window_minutes * 60:
+            return SequenceSignal()
+        pair = self._sequence_signal(
+            self._select_stat(previous.entity_id, entity_id, user_id, settings),
+            delay,
+            now,
+            settings,
+            presence_home,
+            (previous.entity_id,),
+        )
+        if len(recent) < 2:
+            return pair
+        first = recent[-2]
+        first_delay = previous.timestamp.timestamp() - first.timestamp.timestamp()
+        if (
+            first.entity_id == previous.entity_id
+            or first_delay <= 0
+            or first_delay > settings.sequence_window_minutes * 60
+        ):
+            return pair
+        chain = self._sequence_signal(
+            self._select_chain(
+                first.entity_id,
+                previous.entity_id,
+                entity_id,
+                user_id,
+                settings,
+            ),
+            delay,
+            now,
+            settings,
+            presence_home,
+            (first.entity_id, previous.entity_id),
+        )
+        return chain if chain.score >= pair.score and chain.depth == 2 else pair
 
     def record_exposure(
         self,
@@ -731,6 +939,13 @@ class LearningEngine:
         ]
         for key in stale:
             del self.transitions[key]
+        stale_chains = [
+            key
+            for key, stat in self.chains.items()
+            if stat.last_seen is None or stat.last_seen < cutoff
+        ]
+        for chain_key in stale_chains:
+            del self.chains[chain_key]
         cutoff = now - timedelta(days=retention_days)
         before = len(self.exposures)
         self.exposures = [row for row in self.exposures if row.timestamp >= cutoff]
@@ -741,7 +956,7 @@ class LearningEngine:
         ]
         for key in stale_feedback:
             del self.feedback[key]
-        return len(stale) + before - len(self.exposures) + len(stale_feedback)
+        return len(stale) + len(stale_chains) + before - len(self.exposures) + len(stale_feedback)
 
     def reset_sequence(self, *, entity_id: str | None = None, user_id: str | None = None) -> None:
         self.transitions = {
@@ -752,9 +967,20 @@ class LearningEngine:
                 and (user_id is None or stat.profile == user_id)
             )
         }
+        self.chains = {
+            key: stat
+            for key, stat in self.chains.items()
+            if not (
+                (
+                    entity_id is None
+                    or entity_id in (stat.first_entity, stat.second_entity, stat.to_entity)
+                )
+                and (user_id is None or stat.profile == user_id)
+            )
+        }
         if entity_id is None and user_id is None:
             self._recent_by_actor.clear()
-            self._latest_action = None
+            self._recent_global.clear()
 
     def reset_feedback(self, *, entity_id: str | None = None, user_id: str | None = None) -> None:
         self.feedback = {
@@ -798,6 +1024,27 @@ class LearningEngine:
             for stat in matches[:limit]
         ]
 
+    def top_chains(
+        self, entity_id: str, *, user_id: str | None = None, limit: int = 5
+    ) -> list[dict[str, Any]]:
+        profile = user_id or GLOBAL_PROFILE
+        matches = [
+            stat
+            for stat in self.chains.values()
+            if stat.profile == profile and stat.to_entity == entity_id
+        ]
+        matches.sort(key=lambda stat: (-stat.count, stat.first_entity, stat.second_entity))
+        return [
+            {
+                "entities": [stat.first_entity, stat.second_entity],
+                "count": stat.count,
+                "confidence": round(1 - math.exp(-stat.count / 3), 4),
+                "average_delay_seconds": round(stat.average_delay_seconds, 1),
+                "median_delay_seconds": round(stat.median_delay_seconds, 1),
+            }
+            for stat in matches[:limit]
+        ]
+
     def entity_feedback_stats(
         self, entity_id: str, *, user_id: str | None = None
     ) -> dict[str, Any]:
@@ -819,9 +1066,12 @@ class LearningEngine:
 
     def counts(self) -> dict[str, Any]:
         supported = sum(1 for stat in self.transitions.values() if stat.count >= 3)
+        supported_chains = sum(1 for stat in self.chains.values() if stat.count >= 3)
         return {
             "sequence_patterns": len(self.transitions),
             "supported_sequence_patterns": supported,
+            "sequence_chain_patterns": len(self.chains),
+            "supported_sequence_chain_patterns": supported_chains,
             "suggestion_exposures": len(self.exposures),
             "feedback_patterns": len(self.feedback),
             "adaptive_rejected_records": self.rejected,
@@ -831,8 +1081,10 @@ class LearningEngine:
     def metrics_snapshot(self) -> dict[str, Any]:
         windows = self.metrics["prediction_windows"]
         total = self.metrics["total_suggestions"]
-        learning_evidence = sum(stat.count for stat in self.transitions.values()) + sum(
-            stat.exposures for stat in self.feedback.values() if stat.context_hash == "*"
+        learning_evidence = (
+            sum(stat.count for stat in self.transitions.values())
+            + sum(stat.count for stat in self.chains.values())
+            + sum(stat.exposures for stat in self.feedback.values() if stat.context_hash == "*")
         )
         return {
             **self.metrics,
@@ -904,7 +1156,9 @@ class LearningEngine:
                 settings,
             )
             reason = (
-                "sequence_habit"
+                "sequence_chain_habit"
+                if signal.depth == 2 and signal.score > 0.25
+                else "sequence_habit"
                 if signal.score > 0.25
                 else "accepted_habit"
                 if feedback.acceptance_score > 0.2
@@ -922,6 +1176,7 @@ class LearningEngine:
                     ),
                     base_score=item.score,
                     sequence_score=signal.score,
+                    sequence_depth=signal.depth,
                     acceptance_score=feedback.acceptance_score,
                     acceptance_rate=feedback.acceptance_rate,
                     ignore_penalty=feedback.ignore_penalty,

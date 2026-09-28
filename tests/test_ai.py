@@ -78,6 +78,7 @@ def test_prompt_includes_local_adaptive_signals_as_read_only_statistics():
                 "score": 0.81,
                 "base_score": 0.63,
                 "sequence_score": 0.82,
+                "sequence_depth": 2,
                 "acceptance_rate": 0.74,
                 "ignore_penalty": 0.04,
             }
@@ -86,6 +87,7 @@ def test_prompt_includes_local_adaptive_signals_as_read_only_statistics():
     )
     assert '"base_score":0.63' in package.prompt
     assert '"sequence_score":0.82' in package.prompt
+    assert '"sequence_depth":2' in package.prompt
     assert '"acceptance_rate":0.74' in package.prompt
     assert '"ignore_penalty":0.04' in package.prompt
 

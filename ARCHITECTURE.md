@@ -279,9 +279,10 @@ validation and deduplication. A bounded, non-persistent recent-action buffer is
 kept per user plus a global buffer. Source weights and the original confidence
 scale evidence without promoting raw `state_changed` events.
 
-The transition model stores compact A→B aggregates rather than rescanning raw
-history. Each aggregate records raw and weighted counts, last observation,
-delay sum, a bounded delay sample for the median, and distributions for
+The transition model stores compact A→B and bounded A→B→C aggregates rather
+than rescanning raw history. Three-step chains use only the last two significant
+actions for the same actor; arbitrary-length chains are intentionally excluded.
+Each aggregate records raw and weighted counts, last observation, delay sum, a bounded delay sample for the median, and distributions for
 morning/afternoon/evening/night, weekday/weekend and home/away/unknown. Sequence
 scores require the configured minimum raw support, decay by age, compare the
 current delay with the learned delay, and softly match the current context.
@@ -316,10 +317,11 @@ All percentages are divided by 100. The resulting score remains in [0, 1].
 Debug output retains base and every adaptive term. Standard reasons remain
 positive or neutral; full negative evidence is debug-only.
 
-Storage remains one private Home Assistant `Store` per ConfigEntry. Schema 5
+Storage remains one private Home Assistant `Store` per ConfigEntry. Schema 6
 contains the existing `records` array plus an `adaptive` object with transition
-aggregates, live/recent exposures, feedback aggregates and metrics. The Store
-migration creates an empty adaptive section without changing old records.
+and three-step chain aggregates, live/recent exposures, feedback aggregates and
+metrics. The Store migration adds an empty `chains` collection without changing
+old records or existing adaptive evidence.
 Writes remain delayed and snapshot-based. Raw exposures follow configurable
 30–365-day retention and strict capacity limits; compact aggregates decay and
 are removed when stale. The recent-action buffer intentionally starts empty

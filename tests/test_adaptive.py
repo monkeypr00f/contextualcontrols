@@ -31,6 +31,21 @@ def train(engine: LearningEngine, count: int = 3, delay_minutes: int = 5) -> dat
     return moment
 
 
+def train_chain(engine: LearningEngine, count: int = 3) -> datetime:
+    moment = START
+    for _index in range(count):
+        engine.record_action(action("media_player.tv", moment), SETTINGS)
+        moment += timedelta(minutes=2)
+        engine.record_action(action("light.living_room", moment), SETTINGS)
+        moment += timedelta(minutes=3)
+        engine.record_action(action("script.goodnight", moment), SETTINGS)
+        moment += timedelta(minutes=1)
+    engine.record_action(action("media_player.tv", moment), SETTINGS)
+    moment += timedelta(minutes=2)
+    engine.record_action(action("light.living_room", moment), SETTINGS)
+    return moment
+
+
 def test_a_to_b_transition_and_minimum_occurrences():
     engine = LearningEngine()
     moment = train(engine, 2)
@@ -48,6 +63,55 @@ def test_transition_outside_window_is_not_recorded():
     engine.record_action(action("cover.garage", START), SETTINGS)
     engine.record_action(action("light.entry", START + timedelta(minutes=31)), SETTINGS)
     assert not engine.transitions
+
+
+def test_a_to_b_to_c_chain_requires_support_and_uses_two_recent_actions():
+    engine = LearningEngine()
+    moment = train_chain(engine, 2)
+    assert engine.get_sequence_score("script.goodnight", moment, SETTINGS).depth == 0
+
+    engine = LearningEngine()
+    moment = train_chain(engine, 3)
+    signal = engine.get_sequence_score(
+        "script.goodnight", moment + timedelta(minutes=3), SETTINGS, user_id="alice"
+    )
+    assert signal.score > 0
+    assert signal.depth == 2
+    assert signal.predecessors == ("media_player.tv", "light.living_room")
+    assert signal.count == 3
+    ranked = engine.apply_adaptive(
+        [Ranked("script.goodnight", 0.5, "habit")],
+        moment + timedelta(minutes=3),
+        SETTINGS,
+        "alice",
+        True,
+    )[0]
+    assert ranked.sequence_depth == 2
+    assert ranked.reason_key == "sequence_chain_habit"
+
+
+def test_chain_is_not_learned_when_one_step_is_outside_window():
+    engine = LearningEngine()
+    engine.record_action(action("cover.garage", START), SETTINGS)
+    engine.record_action(action("light.entry", START + timedelta(minutes=31)), SETTINGS)
+    engine.record_action(action("climate.living", START + timedelta(minutes=32)), SETTINGS)
+    assert not engine.chains
+
+
+def test_chain_persistence_cleanup_and_selective_reset():
+    engine = LearningEngine()
+    moment = train_chain(engine)
+    restored = LearningEngine(engine.export())
+    assert restored.top_chains("script.goodnight")[0]["entities"] == [
+        "media_player.tv",
+        "light.living_room",
+    ]
+    restored.reset_sequence(entity_id="light.living_room")
+    assert not restored.chains
+
+    restored = LearningEngine(engine.export())
+    assert restored.cleanup(moment + timedelta(days=91), 90) > 0
+    assert not restored.chains
 
 
 def test_transition_decay_reduces_signal():

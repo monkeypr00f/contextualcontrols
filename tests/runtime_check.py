@@ -85,7 +85,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await history.async_load(dt_util.utcnow())
         self.assertEqual(len(history.records), 1)
         self.assertEqual(history.records[0].confidence, 0.2)
-        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 5)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 6)
         future = History(self.hass, "future")
         path = Path(future.store.path)
         await asyncio.to_thread(write, 999)

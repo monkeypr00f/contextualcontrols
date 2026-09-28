@@ -13,10 +13,14 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
-    if version not in (1, 2, 3, 4, 5):
+    if version not in (1, 2, 3, 4, 5, 6):
         raise ValueError("Unsupported storage version")
-    if version == 5:
+    if version == 6:
         return data
+    if version == 5:
+        upgraded = {**data, "adaptive": dict(data.get("adaptive", {}))}
+        upgraded["adaptive"].setdefault("chains", [])
+        return upgraded
     rows = data.get("records", [])
     if version == 1:
         rows = [{"area_id": None, "confidence": 0.2, **row} for row in rows]
@@ -35,7 +39,13 @@ def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
     }
     if version == 4:
         migrated["records"] = rows
-    migrated["adaptive"] = {"transitions": [], "exposures": [], "feedback": [], "metrics": {}}
+    migrated["adaptive"] = {
+        "transitions": [],
+        "chains": [],
+        "exposures": [],
+        "feedback": [],
+        "metrics": {},
+    }
     return migrated
 
 
@@ -119,7 +129,14 @@ def encode(records: Iterable[Usage], adaptive: dict[str, Any] | None = None) -> 
             }
             for row in records
         ],
-        "adaptive": adaptive or {"transitions": [], "exposures": [], "feedback": [], "metrics": {}},
+        "adaptive": adaptive
+        or {
+            "transitions": [],
+            "chains": [],
+            "exposures": [],
+            "feedback": [],
+            "metrics": {},
+        },
     }
 
 

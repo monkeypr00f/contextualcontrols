@@ -1,5 +1,13 @@
 # Verifica Phase 1 — 25 settembre 2026
 
+## Sequence chains 0.7.1
+
+- Le catene A→B→C usano esclusivamente le ultime due azioni significative dello stesso attore.
+- I test verificano supporto minimo, finestra su entrambi i passaggi, persistenza, retention,
+  reset selettivo, diagnostica e payload AI con `sequence_depth`.
+- Lo storage 6 migra lo schema 5 aggiungendo `adaptive.chains` senza alterare transizioni,
+  feedback, exposure o metriche esistenti.
+
 ## Adaptive Learning 0.7.0
 
 - I test deterministici coprono soglia e finestra delle transizioni, decay, profili per utente e

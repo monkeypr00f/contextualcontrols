@@ -410,6 +410,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             "score": item.score,
                             "base_score": item.base_score,
                             "sequence_score": item.sequence_score,
+                            "sequence_depth": item.sequence_depth,
                             "acceptance_rate": item.acceptance_rate,
                             "ignore_penalty": item.ignore_penalty,
                             "count": item.count,
@@ -474,6 +475,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "score": item.score,
                     "base_score": item.score if item.pinned else item.base_score,
                     "sequence_score": item.sequence_score,
+                    "sequence_depth": item.sequence_depth,
                     "reason": self._translations.get(key, item.reason_key),
                     "source": item.source,
                     "rank": index,
@@ -544,6 +546,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "base_score": item.base_score,
                     "sequence": item.sequence_score,
                     "sequence_score": item.sequence_score,
+                    "sequence_depth": item.sequence_depth,
                     "acceptance": item.acceptance_score,
                     "acceptance_score": item.acceptance_score,
                     "acceptance_rate": item.acceptance_rate,
@@ -615,6 +618,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {
                 "actions": len(records),
                 "sequence_patterns": len(self.history.learning.transitions),
+                "sequence_chain_patterns": len(self.history.learning.chains),
                 **self.history.learning.metrics_snapshot(),
             }
         return {
@@ -622,6 +626,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "actions": len(records),
             **self.history.learning.entity_feedback_stats(entity_id, user_id=user_id),
             "top_predecessors": self.history.learning.top_predecessors(entity_id, user_id=user_id),
+            "top_sequences": self.history.learning.top_chains(entity_id, user_id=user_id),
         }
 
     async def async_execute_slot(
