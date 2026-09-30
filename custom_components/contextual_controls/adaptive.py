@@ -356,6 +356,7 @@ def context_fingerprint(
     moment: datetime,
     presence_home: bool | None,
     context_states: tuple[tuple[str, str], ...] = (),
+    location_context: str | None = None,
 ) -> str:
     """Hash only a compact segment and explicitly configured context states."""
     document = {
@@ -364,6 +365,8 @@ def context_fingerprint(
         "presence": presence_bucket(presence_home),
         "context": sorted(context_states),
     }
+    if location_context is not None:
+        document["location"] = location_context
     return hashlib.sha256(
         json.dumps(document, separators=(",", ":"), sort_keys=True).encode()
     ).hexdigest()[:16]

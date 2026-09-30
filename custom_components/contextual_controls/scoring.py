@@ -64,6 +64,28 @@ def area_weight(area_id: str | None, active_area_ids: tuple[str, ...]) -> float:
     return 1.1 if area_id in active_area_ids else 0.95
 
 
+def location_weight(
+    historical_context: str | None,
+    historical_access_point: str | None,
+    current_context: str | None,
+    current_access_point: str | None,
+    influence: float,
+) -> float:
+    """Prefer the functional context; AP identity is only a small tie-breaker."""
+    if not historical_context or not current_context:
+        return 1.0
+    if "unknown" in (historical_context, current_context):
+        raw = 1.0
+    elif historical_context == current_context:
+        raw = 1.15
+        if historical_access_point and historical_access_point == current_access_point:
+            raw += 0.03
+    else:
+        raw = 0.7
+    strength = max(0.0, min(100.0, influence)) / 100
+    return 1.0 + (raw - 1.0) * strength
+
+
 def rank(
     candidates: Iterable[Candidate],
     records: Iterable[Usage],
@@ -90,8 +112,13 @@ def rank(
         if count < 3 and settings.cold_start == "pinned":
             continue
         evidence = times = recencies = confidences = states = 0.0
-        weekdays = presences = contexts = 0.0
+        weekdays = presences = contexts = locations = 0.0
         area = area_weight(candidate.area_id, settings.active_area_ids)
+        relevance = (
+            1.0 + 0.12 * max(0.0, min(100.0, settings.location_influence)) / 100
+            if candidate.entity_id in settings.active_location_entity_ids
+            else 1.0
+        )
         in_window = 0
         for event in events:
             local_time = event.timestamp.astimezone(now.tzinfo)
@@ -106,8 +133,24 @@ def rank(
                 event.presence_home, settings.presence_home, settings.presence_mode
             )
             context = context_similarity(settings.context_states, event.context_states)
+            location = location_weight(
+                event.location_context,
+                event.connected_to,
+                settings.location_context,
+                settings.connected_to,
+                settings.location_influence,
+            )
             evidence += (
-                time * recency * event.confidence * state * weekday * presence * area * context
+                time
+                * recency
+                * event.confidence
+                * state
+                * weekday
+                * presence
+                * area
+                * context
+                * location
+                * relevance
             )
             times += time
             recencies += recency
@@ -116,10 +159,13 @@ def rank(
             weekdays += weekday
             presences += presence
             contexts += context
+            locations += location * relevance
             in_window += clock_distance(local_time, now) <= settings.time_window_minutes
         score = 1 - math.exp(-evidence / 3)
         reason = "habit"
-        if events and settings.presence_mode != "ignore" and presences / count > 1:
+        if events and locations / count > 1:
+            reason = "location_habit"
+        elif events and settings.presence_mode != "ignore" and presences / count > 1:
             reason = "presence_habit"
         elif events and contexts / count > 1:
             reason = "context_habit"
@@ -161,6 +207,7 @@ def rank(
                 presence=presences / max(1, count),
                 area=area,
                 context=contexts / max(1, count),
+                location=locations / max(1, count),
             )
         )
     return sorted(result, key=lambda item: (-item.score, item.entity_id))

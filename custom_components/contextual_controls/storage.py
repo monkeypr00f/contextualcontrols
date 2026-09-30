@@ -31,6 +31,7 @@ class History:
         )
         self.records: deque[Usage] = deque()
         self.learning = LearningEngine()
+        self.location_data: dict[str, Any] = {"observed_access_points": []}
         self.rejected = 0
         self.evicted = 0
 
@@ -42,6 +43,13 @@ class History:
         rows, self.evicted = await self.hass.async_add_executor_job(retain, rows, now)
         self.records = deque(rows)
         self.learning = LearningEngine(payload.get("adaptive", {}))
+        location = payload.get("location", {})
+        observed = location.get("observed_access_points", []) if isinstance(location, dict) else []
+        self.location_data = {
+            "observed_access_points": sorted(
+                {value.strip() for value in observed if isinstance(value, str) and value.strip()}
+            )
+        }
 
     @callback
     def prune(self, now: datetime) -> None:
@@ -63,12 +71,14 @@ class History:
         # The executor sees only this immutable tuple, never the live deque.
         snapshot = tuple(self.records)
         adaptive = self.learning.export()
-        self.store.async_delay_save(lambda: encode(snapshot, adaptive), 15)
+        location = {"observed_access_points": list(self.location_data["observed_access_points"])}
+        self.store.async_delay_save(lambda: encode(snapshot, adaptive, location), 15)
 
     async def async_flush(self) -> None:
         snapshot = tuple(self.records)
         adaptive = self.learning.export()
-        payload = await self.hass.async_add_executor_job(encode, snapshot, adaptive)
+        location = {"observed_access_points": list(self.location_data["observed_access_points"])}
+        payload = await self.hass.async_add_executor_job(encode, snapshot, adaptive, location)
         await self.store.async_save(payload)
         # Ingestion may continue while a reset flush serializes/writes. Ensure
         # a newer delayed snapshot is not overwritten by the older flush.

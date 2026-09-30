@@ -39,6 +39,7 @@ from .ai import (
 from .const import DEFAULTS, DOMAIN
 from .context import is_home, presence_status, snapshot_context
 from .eligibility import available, compose, eligible
+from .location import LocationEngine, TrackerObservation
 from .models import Candidate, ScoringSettings, Usage
 from .quick_access import (
     DEFAULT_ICONS,
@@ -90,9 +91,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.quick_access_executions = 0
         self.stale_slot_rejections = 0
         self.sensitive_action_rejections = 0
+        self.location = LocationEngine()
+        self._location_timer = None
 
     async def async_initialize(self) -> None:
         await self.history.async_load(dt_util.utcnow())
+        self.location = LocationEngine(self.history.location_data["observed_access_points"])
+        self.location.configure(self.options["location_contexts"])
         self._translations = await async_get_translations(
             self.hass, self.hass.config.language, "entity", {DOMAIN}
         )
@@ -173,7 +178,11 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.eligible_ids.clear()
         self.areas.clear()
         self.signal_areas.clear()
-        signal_ids = set(self.options["presence_entities"]) | set(self.options["context_entities"])
+        signal_ids = (
+            set(self.options["presence_entities"])
+            | set(self.options["context_entities"])
+            | set(self.options["location_trackers"])
+        )
         for state in self.hass.states.async_all():
             entry = entities.async_get(state.entity_id)
             area = entry.area_id if entry else None
@@ -215,9 +224,51 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._dirty = True
                 self._request()
         elif entity_id in self.eligible_ids or entity_id in set(
-            self.options["presence_entities"] + self.options["context_entities"]
+            self.options["presence_entities"]
+            + self.options["context_entities"]
+            + self.options["location_trackers"]
         ):
             self._request()
+
+    @callback
+    def _location_refresh(self, _now) -> None:
+        self._location_timer = None
+        self._request()
+
+    @callback
+    def _update_location(self, now: datetime):
+        trackers = tuple(self.options["location_trackers"])
+        observations = []
+        for entity_id in trackers:
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                observations.append(TrackerObservation(entity_id, "unavailable", None))
+                continue
+            connected_to = state.attributes.get("connected_to")
+            observations.append(
+                TrackerObservation(
+                    entity_id,
+                    state.state,
+                    connected_to if isinstance(connected_to, str) else None,
+                )
+            )
+        before = set(self.location.observed_access_points)
+        remaining = self.location.observe(
+            observations, now, int(self.options["location_debounce_seconds"])
+        )
+        if self.location.observed_access_points != before:
+            self.history.location_data["observed_access_points"] = sorted(
+                self.location.observed_access_points
+            )
+            self.history.schedule_save()
+        if self._location_timer:
+            self._location_timer()
+            self._location_timer = None
+        if remaining is not None:
+            self._location_timer = async_call_later(
+                self.hass, remaining + 0.1, self._location_refresh
+            )
+        return self.location.snapshot
 
     @callback
     def _automation(self, event: Event) -> None:
@@ -311,6 +362,9 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.areas.get(entity_id),
                     presence,
                     context,
+                    None,
+                    self.location.snapshot.location_context,
+                    self.location.snapshot.connected_to,
                 )
                 self.history.append(record)
                 self.history.learning.resolve_exposure(
@@ -328,6 +382,11 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._rebuild()
         now = dt_util.now()
         presence, context, active_areas = self._signal_snapshot()
+        location = self._update_location(now)
+        location_zone = self.location.zone(location.location_context)
+        if location_zone and float(self.options["location_influence"]) > 0:
+            active_areas = tuple(sorted(set(active_areas) | set(location_zone.area_ids)))
+        active_location_entities = location_zone.entity_ids if location_zone else ()
         self.history.prune(now)
         adaptive_settings = self._adaptive_settings()
         self.history.learning.cleanup(now, adaptive_settings.retention_days, adaptive_settings)
@@ -360,6 +419,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             presence_home=presence,
             active_area_ids=active_areas,
             context_states=context,
+            location_context=location.location_context,
+            connected_to=location.connected_to,
+            location_influence=float(self.options["location_influence"]),
+            active_location_entity_ids=active_location_entities,
         )
         ai_used = False
         ai_cached = False
@@ -381,7 +444,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 adaptive_settings,
                 self.options["user_id"] or None,
                 presence,
-                context_fingerprint(now, presence, context),
+                context_fingerprint(now, presence, context, location.location_context),
             )
             adaptive_ranks = {item.entity_id: index for index, item in enumerate(ranked, 1)}
             if (
@@ -437,6 +500,10 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else:
                         label = f"context_{index}"
                     context_rows.append({"id": label, "state": state_value})
+                if privacy.context_entities and location.location_context:
+                    context_rows.append(
+                        {"id": "location_context", "state": location.location_context}
+                    )
                 package = build_prompt(
                     now,
                     prompt_rows,
@@ -492,7 +559,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 [row for row in rows if not row["pinned"]],
                 now,
                 adaptive_settings,
-                context_hash=context_fingerprint(now, presence, context),
+                context_hash=context_fingerprint(now, presence, context, location.location_context),
                 source="unknown",
                 confidence=0.35,
                 user_id=self.options["user_id"] or None,
@@ -515,6 +582,25 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "presence_home": presence,
             "context_entities_count": len(context),
             "active_areas_count": len(active_areas),
+            "location_context": location.location_context,
+            "connected_to": location.connected_to,
+            "location_source": location.source,
+            "location_confidence": location.confidence,
+            "location_tracker": location.tracker_entity_id,
+            "last_connected_to": location.last_connected_to,
+            "last_location_context": location.last_location_context,
+            "location_last_changed": location.last_changed.isoformat()
+            if location.last_changed
+            else None,
+            "location_pending_context": location.pending_context,
+            "location_area_ids": list(location_zone.area_ids) if location_zone else [],
+            "location_entity_ids": list(location_zone.entity_ids) if location_zone else [],
+            "location_elapsed_seconds": round(
+                max(0.0, (now - location.last_changed).total_seconds()), 1
+            )
+            if location.last_changed
+            else None,
+            "unassigned_access_points": list(self.location.unassigned_access_points),
             "quick_access_enabled": self.options["quick_access_enabled"],
             "quick_access_slots": int(self.options["quick_access_slots"]),
             "slot_generation": self.slot_manager.generation,
@@ -542,6 +628,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "area": item.area,
                     "context": item.context,
                     "context_score": item.context,
+                    "location": item.location,
+                    "location_score": item.location,
                     "base": item.base_score,
                     "base_score": item.base_score,
                     "sequence": item.sequence_score,
@@ -728,6 +816,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     presence,
                     context_states,
                     source if source in QUICK_ACCESS_SOURCES else "unknown",
+                    self.location.snapshot.location_context,
+                    self.location.snapshot.connected_to,
                 )
                 local_now = dt_util.as_local(record.timestamp)
                 self.history.learning.record_exposure(
@@ -741,7 +831,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ],
                     local_now,
                     self._adaptive_settings(),
-                    context_hash=context_fingerprint(local_now, presence, context_states),
+                    context_hash=context_fingerprint(
+                        local_now,
+                        presence,
+                        context_states,
+                        self.location.snapshot.location_context,
+                    ),
                     source=source if source in QUICK_ACCESS_SOURCES else "unknown",
                     confidence=1.0,
                     user_id=context.user_id,
@@ -775,5 +870,8 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._pending_refresh:
             self._pending_refresh()
             self._pending_refresh = None
+        if self._location_timer:
+            self._location_timer()
+            self._location_timer = None
         await self.async_shutdown()
         await self.history.async_flush()

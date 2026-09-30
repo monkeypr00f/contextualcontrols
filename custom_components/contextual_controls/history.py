@@ -13,14 +13,23 @@ ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 
 def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
-    if version not in (1, 2, 3, 4, 5, 6):
+    if version not in (1, 2, 3, 4, 5, 6, 7):
         raise ValueError("Unsupported storage version")
-    if version == 6:
+    if version == 7:
         return data
+    if version == 6:
+        return {
+            **data,
+            "records": [
+                {"location_context": None, "connected_to": None, **row}
+                for row in data.get("records", [])
+            ],
+            "location": {"observed_access_points": []},
+        }
     if version == 5:
         upgraded = {**data, "adaptive": dict(data.get("adaptive", {}))}
         upgraded["adaptive"].setdefault("chains", [])
-        return upgraded
+        return migrate_payload(6, upgraded)
     rows = data.get("records", [])
     if version == 1:
         rows = [{"area_id": None, "confidence": 0.2, **row} for row in rows]
@@ -33,6 +42,8 @@ def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
                 "presence_home": None if version < 3 else row.get("presence_home"),
                 "context_states": [] if version < 3 else row.get("context_states", []),
                 "source_detail": None,
+                "location_context": None,
+                "connected_to": None,
             }
             for row in rows
         ]
@@ -46,6 +57,7 @@ def migrate_payload(version: int, data: dict[str, Any]) -> dict[str, Any]:
         "feedback": [],
         "metrics": {},
     }
+    migrated["location"] = {"observed_access_points": []}
     return migrated
 
 
@@ -83,6 +95,10 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                     "control_center",
                     "unknown",
                 )
+                or row.get("location_context") is not None
+                and not isinstance(row.get("location_context"), str)
+                or row.get("connected_to") is not None
+                and not isinstance(row.get("connected_to"), str)
             ):
                 raise ValueError("Invalid record")
             context_states = row.get("context_states", [])
@@ -105,6 +121,8 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
                     row.get("presence_home"),
                     tuple((item[0], item[1]) for item in context_states),
                     row.get("source_detail"),
+                    row.get("location_context"),
+                    row.get("connected_to"),
                 )
             )
         except KeyError, TypeError, ValueError, OverflowError:
@@ -112,7 +130,11 @@ def decode(data: dict[str, Any]) -> tuple[list[Usage], int]:
     return records, rejected
 
 
-def encode(records: Iterable[Usage], adaptive: dict[str, Any] | None = None) -> dict[str, Any]:
+def encode(
+    records: Iterable[Usage],
+    adaptive: dict[str, Any] | None = None,
+    location: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "records": [
             {
@@ -126,6 +148,8 @@ def encode(records: Iterable[Usage], adaptive: dict[str, Any] | None = None) -> 
                 "presence_home": row.presence_home,
                 "context_states": [list(item) for item in row.context_states],
                 "source_detail": row.source_detail,
+                "location_context": row.location_context,
+                "connected_to": row.connected_to,
             }
             for row in records
         ],
@@ -137,6 +161,7 @@ def encode(records: Iterable[Usage], adaptive: dict[str, Any] | None = None) -> 
             "feedback": [],
             "metrics": {},
         },
+        "location": location or {"observed_access_points": []},
     }
 
 

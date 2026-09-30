@@ -1,9 +1,9 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 NAME = "Contextual Controls"
-STORAGE_VERSION = 6
+STORAGE_VERSION = 7
 MAX_RECORDS = 50_000
 RETENTION_DAYS = 90
 DEFAULT_DOMAINS = ["light", "switch", "cover", "climate", "media_player", "scene", "script"]
@@ -39,6 +39,10 @@ DEFAULTS = {
     "presence_entities": [],
     "presence_mode": "signal",
     "context_entities": [],
+    "location_trackers": [],
+    "location_debounce_seconds": 15,
+    "location_influence": 30,
+    "location_contexts": [],
     "ignored_entities": [],
     "pinned_entities": [],
     "pinned_position": "before",

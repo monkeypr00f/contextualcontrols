@@ -102,3 +102,22 @@ def test_selective_reset_and_full_reset():
     assert reset(records, user_id="alice") == [records[1]]
     assert reset(records, entity_id="light.a", user_id="alice") == records[1:]
     assert not reset(records)
+
+
+def test_v6_migration_adds_location_storage_and_record_fields():
+    old = encode([row()])
+    old.pop("location")
+    old["records"][0].pop("location_context")
+    old["records"][0].pop("connected_to")
+    migrated = migrate_payload(6, old)
+    records, errors = decode(migrated)
+    assert errors == 0
+    assert records[0].location_context is None
+    assert migrated["location"] == {"observed_access_points": []}
+
+
+def test_location_fields_round_trip():
+    record = replace(row(), location_context="zona_giorno", connected_to="fritz-cucina")
+    payload = encode([record], location={"observed_access_points": ["fritz-cucina"]})
+    assert decode(payload) == ([record], 0)
+    assert payload["location"]["observed_access_points"] == ["fritz-cucina"]

@@ -220,3 +220,57 @@ def test_stable_tie_and_bounded_scores():
     result = rank(candidates, rows, NOW, SETTINGS)
     assert [item.entity_id for item in result] == ["light.a", "light.z"]
     assert all(0 <= item.score <= 1 for item in result)
+
+
+def test_location_context_changes_ranking_and_exposes_breakdown():
+    candidate = [Candidate("light.kitchen", "off", "kitchen")]
+    records = [
+        replace(
+            use("light.kitchen", days=day, hour=23),
+            location_context="zona_giorno",
+            connected_to="fritz-cucina",
+        )
+        for day in range(1, 6)
+    ]
+    matching = rank(
+        candidate,
+        records,
+        NOW,
+        replace(
+            SETTINGS,
+            location_context="zona_giorno",
+            connected_to="fritz-cucina",
+            location_influence=100,
+        ),
+    )[0]
+    elsewhere = rank(
+        candidate,
+        records,
+        NOW,
+        replace(
+            SETTINGS,
+            location_context="zona_notte",
+            connected_to="fritz-camere",
+            location_influence=100,
+        ),
+    )[0]
+    assert matching.score > elsewhere.score
+    assert matching.location > 1
+    assert matching.reason_key == "location_habit"
+
+
+def test_location_relevant_entity_gets_configurable_boost():
+    records = [use("switch.coffee", days=day) for day in range(1, 4)]
+    candidate = [Candidate("switch.coffee", "off")]
+    normal = rank(candidate, records, NOW, SETTINGS)[0]
+    relevant = rank(
+        candidate,
+        records,
+        NOW,
+        replace(
+            SETTINGS,
+            location_influence=100,
+            active_location_entity_ids=("switch.coffee",),
+        ),
+    )[0]
+    assert relevant.score > normal.score

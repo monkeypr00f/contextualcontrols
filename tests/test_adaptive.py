@@ -46,6 +46,12 @@ def train_chain(engine: LearningEngine, count: int = 3) -> datetime:
     return moment
 
 
+def test_location_only_changes_context_fingerprint_when_configured():
+    legacy = context_fingerprint(START, True, (("sensor.mode", "evening"),))
+    assert legacy == context_fingerprint(START, True, (("sensor.mode", "evening"),), None)
+    assert legacy != context_fingerprint(START, True, (("sensor.mode", "evening"),), "zona_giorno")
+
+
 def test_a_to_b_transition_and_minimum_occurrences():
     engine = LearningEngine()
     moment = train(engine, 2)

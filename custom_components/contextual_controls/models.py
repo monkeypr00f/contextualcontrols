@@ -16,6 +16,8 @@ class Usage:
     presence_home: bool | None = None
     context_states: tuple[tuple[str, str], ...] = ()
     source_detail: str | None = None
+    location_context: str | None = None
+    connected_to: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,7 @@ class Ranked:
     presence: float = 1.0
     area: float = 1.0
     context: float = 1.0
+    location: float = 1.0
     base_score: float = 0.0
     sequence_score: float = 0.0
     sequence_depth: int = 0
@@ -68,3 +71,7 @@ class ScoringSettings:
     presence_home: bool | None = None
     active_area_ids: tuple[str, ...] = ()
     context_states: tuple[tuple[str, str], ...] = ()
+    location_context: str | None = None
+    connected_to: str | None = None
+    location_influence: float = 30
+    active_location_entity_ids: tuple[str, ...] = ()
