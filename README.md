@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.8.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.9.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -63,6 +63,7 @@ In **Configura** trovi sezioni separate:
 | Entità | Inclusioni/esclusioni, domini, aree |
 | Apprendimento | 7–90 giorni, fascia ±30–180 minuti, recenza, origine, profilo, entità ignorate |
 | Contesto | Presenza, modalità presenza, entità contestuali |
+| Zone di posizione | Tracker FRITZ!, debounce, influenza e mappatura AP → contesto |
 | Dashboard | Controlli fissi ordinabili, prima/dopo, occupazione degli slot |
 | Accesso rapido / Apple | Slot, sicurezza, stabilità, entità sensibili e apprendimento |
 | Avanzate / Debug | Soglia minima, cold start, dettagli dei punteggi |
@@ -121,13 +122,14 @@ HA e sono intersecati con le entità consentite. Sono apprese solo azioni di
 controllo riconosciute; creazione scene, reload e richieste di dati sono ignorati.
 
 Ogni utilizzo registra timestamp, entity ID, user ID se disponibile, origine,
-azione, confidence, area, presenza e una snapshot delle sole entità contestuali
-scelte. Il periodo di scoring è configurabile; la retention
+azione, confidence, area, presenza, Location Context/AP e una snapshot delle
+sole entità contestuali scelte. Il periodo di scoring è configurabile; la retention
 locale arriva a 90 giorni e massimo 50.000 eventi. I dati partono dall’installazione:
 nessuna importazione dello storico Recorder e nessuna query SQL.
 
 Il punteggio combina quantità degli utilizzi, vicinanza all’ora attuale, decadimento
-temporale, giorno, presenza, area, contesto, confidence e plausibilità dello stato.
+temporale, giorno, presenza, area, Location Context, contesto, confidence e
+plausibilità dello stato.
 Esempio: una luce già accesa
 rimane interessante se normalmente viene spenta a quest’ora. Le scene non sono
 interpretate semanticamente. L’orario segue il fuso configurato in HA, anche
@@ -143,6 +145,49 @@ nessuna distinzione. La presenza può essere ignorata, usata come segnale oppure
 richiesta: in quest’ultimo caso vengono nascosti anche i controlli fissi quando
 nessuna entità configurata è a casa. Gli stati contestuali sono confrontati come
 valori opachi, senza inferenze semantiche.
+
+### Location Context con FRITZ!Box / FRITZ!Repeater
+
+La posizione interna è opzionale e usa esclusivamente l’attributo
+`connected_to` dei `device_tracker` scelti. L’SSID non viene letto: più nodi
+mesh possono condividere lo stesso SSID. Il sistema osserva gli aggiornamenti di
+stato, conserva i nomi AP incontrati e non interroga periodicamente il router.
+
+Per configurare il tracker:
+
+1. Apri **Impostazioni → Dispositivi e servizi → Contextual Controls → Configura**.
+2. Entra in **Zone di posizione → Rilevamento e influenza** e seleziona
+   `device_tracker.iphonefederico`.
+3. Lascia inizialmente **Permanenza minima** a 15 secondi e **Influenza** a 30,
+   quindi usa **Torna al menu principale → Salva e chiudi**.
+4. Attendi un aggiornamento del tracker. Riapri **Zone di posizione → Access
+   point non assegnati** per vedere il valore `connected_to` osservato.
+5. Usa **Aggiungi zona**, assegna uno o più AP, le aree HA e, facoltativamente,
+   entità rilevanti. Un AP selezionato viene spostato automaticamente dalla sua
+   zona precedente.
+
+Una configurazione possibile è:
+
+| Zona funzionale | Access point | Aree Home Assistant |
+| --- | --- | --- |
+| Zona giorno (`zona_giorno`) | `fritz-cucina`, `fritzbox-master` | Cucina, Soggiorno |
+| Zona notte (`zona_notte`) | `fritz-camere` | Camera, Cameretta, Bagno notte |
+| Mansarda (`mansarda`) | `fritz-mansarda` | Mansarda |
+| Taverna (`taverna`) | `fritz-taverna` | Taverna |
+| Giardino (`giardino`) | `fritz-giardino` | Giardino |
+| Rimessa (`rimessa`) | `fritz-rimessa` | Rimessa |
+
+Le ultime tre zone possono invece essere unite in `zona_servizi`: il piano
+fisico non determina la mappatura. Più AP nella stessa zona non provocano un
+cambio di contesto durante il roaming. Un passaggio a una zona diversa viene
+applicato solo dopo il tempo di permanenza.
+
+Le entità `sensor.contextual_control_location`,
+`sensor.contextual_control_connected_to`,
+`sensor.contextual_control_location_confidence` e
+`sensor.contextual_control_last_location` espongono lo snapshot corrente. Un AP
+non mappato produce `unknown`; fuori casa il contesto è `away`. Se nessun tracker
+è configurato, il valore resta nullo e il ranking si comporta come prima.
 
 ### Adaptive Learning
 
@@ -212,7 +257,8 @@ storico; un riavvio o reload invece lo conserva. Un arresto improvviso può perd
 gli ultimi eventi non ancora scritti (scritture differite di circa 15 secondi).
 
 Il sensore non espone user ID né timestamp dei singoli utilizzi. Diagnostics
-contiene solo conteggi e impostazioni non sensibili. Il debug è disabilitato
+include lo snapshot Location Context necessario per il debug, ma non IP, MAC,
+SSID, user ID o storico preciso. Il debug è disabilitato
 di default e limita i dettagli a 30 candidati. L’attributo `entities` contiene
 entity ID, quindi va trattato come informazione della propria casa.
 

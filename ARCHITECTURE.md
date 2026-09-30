@@ -124,6 +124,52 @@ Context values remain opaque strings; the integration does not infer device
 semantics or normalize private state values.
 Score is `1 - exp(-evidence / 3)`, in [0,1], with stable entity-ID tie breaks.
 
+## Location Context
+
+Indoor position is an optional local signal derived only from the public state
+and attributes of user-selected `device_tracker` entities. `LocationEngine`
+reads `connected_to`; SSID is deliberately ignored because a mesh normally
+shares it across several access points. The coordinator subscribes to normal
+state-change events and never polls the router.
+
+Options store functional contexts with a stable ID, display name, zero or more
+observed access-point names, optional Home Assistant area IDs and optional
+relevant entity IDs. Several APs can map to one context; the model does not use
+floors and does not assume that an AP is a room. An AP can belong to only one
+context. Assigning it in the editor removes it from its previous context. If
+several configured trackers are home, their configured order is the
+deterministic priority order and the first with `connected_to` wins.
+
+The location snapshot contains `home`, `location_context`, `connected_to`,
+source, confidence, tracker, previous context and change time. A mapped AP has
+confidence 0.75, an observed but unmapped AP yields `unknown` at 0.30, a home
+tracker without an AP is `unknown` at 0.20, and a usable away tracker yields
+`away`. An unavailable tracker does not erase a stable location; it lowers
+confidence until a usable update arrives.
+
+Moving between APs assigned to the same context updates `connected_to` without
+changing the functional context or timestamp. Moving to another context starts
+a configurable dwell timer, 15 seconds by default. Only a still-current
+observation after that interval commits the change. Away is immediate. A single
+HA timer completes a pending transition without polling.
+
+Every learned command stores the stable context and AP active when it was
+issued. Statistical evidence gets a bounded location multiplier: a matching
+functional context is preferred, an exact AP is only a small tie-breaker, and a
+different context is moderately reduced. Configured context areas feed the
+existing area factor; explicitly relevant entities receive a small bounded
+boost. Location influence scales all these effects to zero, so detection and
+sensors may remain active without changing ranking. Location also enters the
+existing adaptive context fingerprint and, when context sharing is enabled,
+the AI shortlist context. It never changes eligibility or safety.
+
+Observed AP names are the only discovery data in Store. No IP address, MAC
+address, SSID or complete tracker attribute payload is saved. Store schema 7
+adds nullable location fields to usage records and the compact observed-AP
+list. Existing schema 6 data migrates with null fields; config-entry version 5
+supplies empty defaults. No manual migration is required, and installations
+without a tracker retain the previous ranking exactly.
+
 Cold start applies per entity before three records: recent controls (default),
 frequent controls, domain defaults (explicit opt-in), or pinned only. The
 confidence threshold still applies. Pins bypass statistical confidence and
@@ -135,8 +181,9 @@ configured binary sensor is `on`. Missing or unavailable presence fails closed.
 
 ## Persistence and lifecycle
 
-Store is private and entry-specific. Version 1 records are migrated through
-version 2 to version 3, which adds presence and configured context snapshots.
+Store is private and entry-specific. Versions 1–7 are migrated in order;
+version 3 adds presence and configured context snapshots, versions 4–6 add the
+adaptive model, and version 7 adds Location Context fields and AP discovery.
 Old `user` records become `manual`; ambiguous old `child` records become
 `unknown`. Unknown future
 versions fail setup for retry instead of overwriting data. Invalid individual
