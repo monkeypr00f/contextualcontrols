@@ -1,4 +1,4 @@
-"""Counts only: no identities, entity names, raw history or user IDs."""
+"""Redacted diagnostics: no user IDs, raw history, IP addresses or MAC addresses."""
 
 from collections import Counter
 
@@ -9,6 +9,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
     coordinator = entry.runtime_data
     options = coordinator.options
     sources = Counter(record.source for record in coordinator.history.records)
+    data = coordinator.data or {}
+    location_zone = coordinator.location.zone(data.get("location_context"))
     return {
         "version": VERSION,
         "mode": options["mode"],
@@ -30,6 +32,20 @@ async def async_get_config_entry_diagnostics(hass, entry):
         "quick_access_executions": coordinator.quick_access_executions,
         "stale_slot_rejections": coordinator.stale_slot_rejections,
         "sensitive_action_rejections": coordinator.sensitive_action_rejections,
+        "location": {
+            "device_tracker": data.get("location_tracker"),
+            "connected_to": data.get("connected_to"),
+            "matched_context": data.get("location_context"),
+            "areas": list(location_zone.area_ids) if location_zone else [],
+            "confidence": data.get("location_confidence", 0),
+            "last_access_point": data.get("last_connected_to"),
+            "last_context": data.get("last_location_context"),
+            "seconds_since_change": data.get("location_elapsed_seconds"),
+            "pending_context": data.get("location_pending_context"),
+            "unmapped_access_points": list(coordinator.location.unassigned_access_points),
+            "configured_trackers": len(options["location_trackers"]),
+            "configured_contexts": len(options["location_contexts"]),
+        },
         "configuration": {
             key: options[key]
             for key in (
@@ -76,6 +92,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "prediction_influence",
                 "learning_scope",
                 "adaptive_retention_days",
+                "location_debounce_seconds",
+                "location_influence",
             )
         },
     }

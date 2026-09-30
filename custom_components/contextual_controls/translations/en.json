@@ -41,7 +41,8 @@
           "quick_access": "Quick Access / Apple",
           "save": "Save and close",
           "adaptive": "Adaptive Learning",
-          "adaptive_sources": "Adaptive source weights"
+          "adaptive_sources": "Adaptive source weights",
+          "location": "Location Context"
         }
       },
       "general": {
@@ -273,6 +274,68 @@
           "adaptive_weight_automation": "Automation weight",
           "adaptive_weight_unknown": "Unknown-origin weight"
         }
+      },
+      "location": {
+        "title": "Location Context",
+        "description": "Configure detection, create functional contexts and assign observed access points.",
+        "menu_options": {
+          "location_settings": "Detection and influence",
+          "location_add": "Add location context",
+          "location_edit": "Edit location context",
+          "location_delete": "Delete location context",
+          "location_unassigned": "Unassigned access points",
+          "location_back": "Back to main menu"
+        }
+      },
+      "location_settings": {
+        "title": "Location detection",
+        "data": {
+          "location_trackers": "Device tracker",
+          "location_debounce_seconds": "Minimum dwell time (seconds)",
+          "location_influence": "Location influence"
+        },
+        "data_description": {
+          "location_trackers": "Select FRITZ! trackers exposing connected_to. Their order sets priority when several trackers are home.",
+          "location_debounce_seconds": "A change between different contexts is applied only after this dwell time. Roaming between APs in the same context is immediate and does not change context.",
+          "location_influence": "0 disables ranking effects while keeping detection and sensors; 100 applies the configured maximum weight."
+        }
+      },
+      "location_zone": {
+        "title": "Define location context",
+        "description": "Access points already assigned elsewhere are moved to this context automatically. A context is functional and may contain several areas.",
+        "data": {
+          "location_zone_id": "Context ID",
+          "location_zone_name": "Context name",
+          "location_access_points": "Access point",
+          "location_areas": "Home Assistant areas",
+          "location_entities": "Relevant entities"
+        },
+        "data_description": {
+          "location_zone_id": "Stable lowercase ID such as living_zone. Letters, numbers and underscores are allowed.",
+          "location_access_points": "Shows observed connected_to values. Save the trackers and wait for an update first if the list is empty.",
+          "location_areas": "Entities in these areas receive a small boost while this context is active.",
+          "location_entities": "Entities relevant to this context even when they do not belong to a selected area."
+        }
+      },
+      "location_edit": {
+        "title": "Edit location context",
+        "data": {
+          "location_zone_id": "Context"
+        }
+      },
+      "location_delete": {
+        "title": "Delete location context",
+        "data": {
+          "location_zone_id": "Context",
+          "confirm": "Confirm deletion"
+        },
+        "data_description": {
+          "confirm": "Learning history is preserved; the context access points become unassigned."
+        }
+      },
+      "location_unassigned": {
+        "title": "Unassigned access points",
+        "description": "Observed connected_to values not assigned to a context: {access_points}"
       }
     },
     "error": {
@@ -283,7 +346,10 @@
       "api_key_required": "Enter an API key.",
       "entry_required": "Choose an integration instance when more than one is configured.",
       "user_required": "Enter a user ID.",
-      "entity_required": "Select an entity."
+      "entity_required": "Select an entity.",
+      "invalid_location_id": "Use lowercase letters, numbers and underscores only.",
+      "duplicate_location_id": "A context with this ID already exists.",
+      "location_name_required": "Enter a name for the context."
     }
   },
   "entity": {
@@ -306,7 +372,8 @@
               "ai_selected": "Selected by AI reranking",
               "sequence_habit": "Often used after the recent action",
               "sequence_chain_habit": "Often used after this sequence",
-              "accepted_habit": "Suggestion often selected in this context"
+              "accepted_habit": "Suggestion often selected in this context",
+              "location_habit": "Frequently used in the current location context"
             }
           }
         }
@@ -316,6 +383,18 @@
       },
       "adaptive_learning": {
         "name": "Adaptive learning confidence"
+      },
+      "location": {
+        "name": "Location context"
+      },
+      "connected_to": {
+        "name": "Connected access point"
+      },
+      "location_confidence": {
+        "name": "Location confidence"
+      },
+      "last_location": {
+        "name": "Previous location"
       }
     }
   },

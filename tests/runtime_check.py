@@ -85,7 +85,7 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
         await history.async_load(dt_util.utcnow())
         self.assertEqual(len(history.records), 1)
         self.assertEqual(history.records[0].confidence, 0.2)
-        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 6)
+        self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 7)
         future = History(self.hass, "future")
         path = Path(future.store.path)
         await asyncio.to_thread(write, 999)
@@ -313,7 +313,7 @@ asyncio.run(read())
         old_options["learn_sources"] = ["user"]
         self.hass.config_entries.async_update_entry(entry, options=old_options, version=1)
         self.assertTrue(await self.hass.config_entries.async_reload(entry.entry_id))
-        self.assertEqual(entry.version, 4)
+        self.assertEqual(entry.version, 5)
         self.assertEqual(entry.options["learn_sources"], ["manual"])
         self.assertEqual(entry.options["presence_mode"], "signal")
         self.assertEqual(entry.options["ai_provider"], "disabled")
@@ -402,6 +402,106 @@ asyncio.run(read())
         self.assertNotIn("test_user", str(diagnostics))
         self.assertNotIn("test_contextual", str(diagnostics))
         self.assertNotIn("diagnostic-secret", str(diagnostics))
+        self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
+
+    async def test_location_options_sensors_and_learning_context(self):
+        self.hass.states.async_set(
+            "device_tracker.iphone_contextual",
+            "home",
+            {"connected_to": "fritz-cucina", "ssid": "shared-mesh"},
+        )
+        flow = await self.hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        flow = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"name": "Location context"}
+        )
+        result = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"],
+            {
+                "included_entities": ["light.test_contextual"],
+                "included_domains": [],
+                "excluded_entities": [],
+            },
+        )
+        entry = result["result"]
+        await self.hass.async_block_till_done()
+
+        flow = await self.hass.config_entries.options.async_init(entry.entry_id)
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "location"}
+        )
+        self.assertEqual(flow["step_id"], "location")
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "location_settings"}
+        )
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"],
+            {
+                "location_trackers": ["device_tracker.iphone_contextual"],
+                "location_debounce_seconds": 0,
+                "location_influence": 100,
+            },
+        )
+        self.assertEqual(flow["step_id"], "location")
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "location_add"}
+        )
+        self.assertEqual(flow["step_id"], "location_zone")
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"],
+            {
+                "location_zone_id": "zona_giorno",
+                "location_zone_name": "Zona giorno",
+                "location_access_points": ["fritz-cucina"],
+                "location_areas": [],
+                "location_entities": ["light.test_contextual"],
+            },
+        )
+        self.assertEqual(flow["step_id"], "location")
+        flow = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "location_back"}
+        )
+        result = await self.hass.config_entries.options.async_configure(
+            flow["flow_id"], {"next_step_id": "save"}
+        )
+        self.assertEqual(result["type"], "create_entry")
+        await self.hass.async_block_till_done()
+        coordinator = entry.runtime_data
+        await coordinator.async_refresh()
+
+        location = self.hass.states.get("sensor.contextual_control_location")
+        self.assertEqual(location.state, "zona_giorno")
+        self.assertEqual(location.attributes["connected_to"], "fritz-cucina")
+        self.assertEqual(
+            self.hass.states.get("sensor.contextual_control_connected_to").state,
+            "fritz-cucina",
+        )
+        self.assertEqual(
+            self.hass.states.get("sensor.contextual_control_location_confidence").state,
+            "0.75",
+        )
+
+        await self.hass.services.async_call(
+            "light",
+            "turn_on",
+            {"entity_id": "light.test_contextual"},
+            blocking=True,
+            context=Context(user_id="test_user"),
+        )
+        record = coordinator.history.records[-1]
+        self.assertEqual(record.location_context, "zona_giorno")
+        self.assertEqual(record.connected_to, "fritz-cucina")
+
+        self.hass.states.async_set(
+            "device_tracker.iphone_contextual", "home", {"connected_to": "fritz-nuovo"}
+        )
+        await coordinator.async_refresh()
+        self.assertEqual(
+            self.hass.states.get("sensor.contextual_control_location").state, "unknown"
+        )
+        self.assertIn("fritz-nuovo", coordinator.location.unassigned_access_points)
+        self.hass.states.async_set("device_tracker.iphone_contextual", "not_home")
+        await coordinator.async_refresh()
+        self.assertEqual(self.hass.states.get("sensor.contextual_control_location").state, "away")
         self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
 
     async def test_quick_access_services_safety_learning_and_concurrency(self):

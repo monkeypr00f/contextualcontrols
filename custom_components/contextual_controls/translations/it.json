@@ -41,7 +41,8 @@
           "quick_access": "Accesso rapido / Apple",
           "save": "Salva e chiudi",
           "adaptive": "Apprendimento adattivo",
-          "adaptive_sources": "Pesi origini adattive"
+          "adaptive_sources": "Pesi origini adattive",
+          "location": "Zone di posizione"
         }
       },
       "general": {
@@ -273,6 +274,68 @@
           "adaptive_weight_automation": "Peso automazioni",
           "adaptive_weight_unknown": "Peso origine sconosciuta"
         }
+      },
+      "location": {
+        "title": "Zone di posizione",
+        "description": "Configura il rilevamento, crea contesti funzionali e assegna gli access point osservati.",
+        "menu_options": {
+          "location_settings": "Rilevamento e influenza",
+          "location_add": "Aggiungi zona",
+          "location_edit": "Modifica zona",
+          "location_delete": "Elimina zona",
+          "location_unassigned": "Access point non assegnati",
+          "location_back": "Torna al menu principale"
+        }
+      },
+      "location_settings": {
+        "title": "Rilevamento posizione",
+        "data": {
+          "location_trackers": "Device tracker",
+          "location_debounce_seconds": "Permanenza minima (secondi)",
+          "location_influence": "Influenza posizione"
+        },
+        "data_description": {
+          "location_trackers": "Seleziona i tracker FRITZ! che espongono connected_to. L’ordine stabilisce la priorità se più tracker risultano a casa.",
+          "location_debounce_seconds": "Un cambio tra zone diverse viene applicato solo dopo questa permanenza. I passaggi tra AP della stessa zona sono immediati e non cambiano contesto.",
+          "location_influence": "0 disattiva l’effetto sul ranking mantenendo sensori e rilevamento; 100 applica il peso massimo configurato."
+        }
+      },
+      "location_zone": {
+        "title": "Definisci zona di posizione",
+        "description": "Gli access point già assegnati vengono spostati automaticamente in questa zona. La zona è un contesto funzionale e può comprendere più aree.",
+        "data": {
+          "location_zone_id": "ID zona",
+          "location_zone_name": "Nome zona",
+          "location_access_points": "Access point",
+          "location_areas": "Aree Home Assistant",
+          "location_entities": "Entità rilevanti"
+        },
+        "data_description": {
+          "location_zone_id": "ID stabile in minuscolo, per esempio zona_giorno. Sono ammessi lettere, numeri e underscore.",
+          "location_access_points": "Mostra i valori connected_to osservati. Salva prima i tracker e attendi un loro aggiornamento se l’elenco è vuoto.",
+          "location_areas": "Le entità appartenenti a queste aree ricevono un piccolo aumento quando la zona è attiva.",
+          "location_entities": "Entità importanti per questa zona, anche se non appartengono a una delle aree selezionate."
+        }
+      },
+      "location_edit": {
+        "title": "Modifica zona di posizione",
+        "data": {
+          "location_zone_id": "Zona"
+        }
+      },
+      "location_delete": {
+        "title": "Elimina zona di posizione",
+        "data": {
+          "location_zone_id": "Zona",
+          "confirm": "Conferma eliminazione"
+        },
+        "data_description": {
+          "confirm": "La cronologia resta intatta; gli access point della zona tornano non assegnati."
+        }
+      },
+      "location_unassigned": {
+        "title": "Access point non assegnati",
+        "description": "Valori connected_to osservati e non ancora assegnati: {access_points}"
       }
     },
     "error": {
@@ -283,7 +346,10 @@
       "api_key_required": "Inserisci una API key.",
       "entry_required": "Scegli un'istanza quando ne è configurata più di una.",
       "user_required": "Inserisci un ID utente.",
-      "entity_required": "Seleziona un’entità."
+      "entity_required": "Seleziona un’entità.",
+      "invalid_location_id": "Usa solo lettere minuscole, numeri e underscore.",
+      "duplicate_location_id": "Esiste già una zona con questo ID.",
+      "location_name_required": "Inserisci un nome per la zona."
     }
   },
   "entity": {
@@ -306,7 +372,8 @@
               "ai_selected": "Selezionato dal riordino AI",
               "sequence_habit": "Usato spesso dopo l’azione recente",
               "sequence_chain_habit": "Usato spesso dopo questa sequenza",
-              "accepted_habit": "Suggerimento scelto spesso in questo contesto"
+              "accepted_habit": "Suggerimento scelto spesso in questo contesto",
+              "location_habit": "Usato frequentemente nella zona attuale"
             }
           }
         }
@@ -316,6 +383,18 @@
       },
       "adaptive_learning": {
         "name": "Confidenza apprendimento adattivo"
+      },
+      "location": {
+        "name": "Posizione contestuale"
+      },
+      "connected_to": {
+        "name": "Access point connesso"
+      },
+      "location_confidence": {
+        "name": "Confidenza posizione"
+      },
+      "last_location": {
+        "name": "Posizione precedente"
       }
     }
   },

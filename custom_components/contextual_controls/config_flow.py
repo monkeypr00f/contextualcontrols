@@ -1,5 +1,6 @@
 """Two-screen onboarding and sectioned native-selector options."""
 
+import re
 from copy import deepcopy
 
 import voluptuous as vol
@@ -20,6 +21,9 @@ from .const import (
     QUICK_ACCESS_STABILITY,
     SUPPORTED_DOMAINS,
 )
+from .location import normalize_zones, zones_to_options
+
+LOCATION_ID = re.compile(r"^[a-z0-9_]+$")
 
 SECTIONS = {
     "general": ("mode", "suggestion_count", "refresh_minutes"),
@@ -145,6 +149,7 @@ ENTITY_FIELDS = {
     "quick_access_sensitive_entities",
 }
 PRESENCE_FIELDS = {"presence_entities"}
+LOCATION_TRACKER_FIELDS = {"location_trackers"}
 AREA_FIELDS = {"included_areas", "excluded_areas"}
 BOOLEAN_FIELDS = {
     "all_areas",
@@ -191,6 +196,8 @@ NUMBER_RANGES = {
     "adaptive_weight_script": (0, 100, 1),
     "adaptive_weight_automation": (0, 100, 1),
     "adaptive_weight_unknown": (0, 100, 1),
+    "location_debounce_seconds": (0, 120, 1),
+    "location_influence": (0, 100, 1),
 }
 
 
@@ -203,6 +210,13 @@ def schema_for(keys, options):
                 selector.EntitySelectorConfig(
                     multiple=True,
                     filter={"domain": PRESENCE_DOMAINS},
+                )
+            )
+        elif key in LOCATION_TRACKER_FIELDS:
+            control = selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    multiple=True,
+                    filter={"domain": "device_tracker"},
                 )
             )
         elif key in ENTITY_FIELDS:
@@ -272,6 +286,8 @@ def normalize(values):
             "adaptive_weight_script",
             "adaptive_weight_automation",
             "adaptive_weight_unknown",
+            "location_debounce_seconds",
+            "location_influence",
         )
         else value
         for key, value in values.items()
@@ -279,7 +295,7 @@ def normalize(values):
 
 
 class ContextualConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 4
+    VERSION = 5
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
@@ -334,7 +350,9 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_init(self, user_input=None):
         self._ensure_draft()
-        return self.async_show_menu(step_id="init", menu_options=[*SECTIONS, "ai", "reset", "save"])
+        menu = list(SECTIONS)
+        menu.insert(menu.index("dashboard"), "location")
+        return self.async_show_menu(step_id="init", menu_options=[*menu, "ai", "reset", "save"])
 
     async def _section(self, section, user_input):
         self._ensure_draft()
@@ -376,6 +394,197 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_context(self, user_input=None):
         return await self._section("context", user_input)
+
+    def _location_zones(self):
+        self._ensure_draft()
+        return zones_to_options(normalize_zones(self._draft_options["location_contexts"]))
+
+    def _observed_access_points(self):
+        self._ensure_draft()
+        observed = set()
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is not None:
+            observed.update(runtime.location.observed_access_points)
+        for entity_id in self._draft_options["location_trackers"]:
+            state = self.hass.states.get(entity_id)
+            if state and isinstance(state.attributes.get("connected_to"), str):
+                value = state.attributes["connected_to"].strip()
+                if value:
+                    observed.add(value)
+        return sorted(observed, key=str.casefold)
+
+    async def async_step_location(self, user_input=None):
+        """Open the Location Context editor without discarding the draft."""
+        self._ensure_draft()
+        menu = ["location_settings", "location_add"]
+        if self._location_zones():
+            menu.extend(("location_edit", "location_delete"))
+        menu.extend(("location_unassigned", "location_back"))
+        return self.async_show_menu(step_id="location", menu_options=menu)
+
+    async def async_step_location_back(self, user_input=None):
+        return await self.async_step_init()
+
+    async def async_step_location_settings(self, user_input=None):
+        self._ensure_draft()
+        keys = ("location_trackers", "location_debounce_seconds", "location_influence")
+        if user_input is not None:
+            self._draft_options.update(normalize(user_input))
+            return await self.async_step_location()
+        return self.async_show_form(
+            step_id="location_settings",
+            data_schema=schema_for(keys, self._draft_options),
+        )
+
+    def _zone_selector(self, default=None):
+        zones = self._location_zones()
+        return vol.Schema(
+            {
+                vol.Required(
+                    "location_zone_id", default=default or zones[0]["id"]
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[zone["id"] for zone in zones],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    )
+                )
+            }
+        )
+
+    async def async_step_location_add(self, user_input=None):
+        self._editing_location_id = None
+        return await self.async_step_location_zone(user_input)
+
+    async def async_step_location_edit(self, user_input=None):
+        if user_input is not None:
+            self._editing_location_id = user_input["location_zone_id"]
+            return await self.async_step_location_zone()
+        return self.async_show_form(step_id="location_edit", data_schema=self._zone_selector())
+
+    def _location_zone_schema(self, current, editing=False):
+        access_points = sorted(
+            set(self._observed_access_points()) | set(current.get("access_points", [])),
+            key=str.casefold,
+        )
+        fields = {}
+        if not editing:
+            fields[vol.Required("location_zone_id", default=current.get("id", ""))] = (
+                selector.TextSelector()
+            )
+        fields.update(
+            {
+                vol.Required(
+                    "location_zone_name", default=current.get("name", "")
+                ): selector.TextSelector(),
+                vol.Required(
+                    "location_access_points", default=current.get("access_points", [])
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=access_points,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Optional(
+                    "location_areas", default=current.get("areas", [])
+                ): selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
+                vol.Optional(
+                    "location_entities", default=current.get("entities", [])
+                ): selector.EntitySelector(selector.EntitySelectorConfig(multiple=True)),
+            }
+        )
+        return vol.Schema(fields)
+
+    async def async_step_location_zone(self, user_input=None):
+        self._ensure_draft()
+        zones = self._location_zones()
+        editing_id = getattr(self, "_editing_location_id", None)
+        current = next((zone for zone in zones if zone["id"] == editing_id), {})
+        errors = {}
+        if user_input is not None:
+            context_id = editing_id or user_input["location_zone_id"].strip().lower().replace(
+                "-", "_"
+            )
+            if not LOCATION_ID.fullmatch(context_id):
+                errors["location_zone_id"] = "invalid_location_id"
+            elif any(zone["id"] == context_id and zone["id"] != editing_id for zone in zones):
+                errors["location_zone_id"] = "duplicate_location_id"
+            elif not user_input["location_zone_name"].strip():
+                errors["location_zone_name"] = "location_name_required"
+            else:
+                assigned = set(user_input["location_access_points"])
+                updated = []
+                for zone in zones:
+                    if zone["id"] == editing_id:
+                        continue
+                    updated.append(
+                        {
+                            **zone,
+                            "access_points": [
+                                value for value in zone["access_points"] if value not in assigned
+                            ],
+                        }
+                    )
+                updated.append(
+                    {
+                        "id": context_id,
+                        "name": user_input["location_zone_name"].strip(),
+                        "access_points": list(user_input["location_access_points"]),
+                        "areas": list(user_input.get("location_areas", [])),
+                        "entities": list(user_input.get("location_entities", [])),
+                    }
+                )
+                self._draft_options["location_contexts"] = zones_to_options(
+                    normalize_zones(updated)
+                )
+                return await self.async_step_location()
+        return self.async_show_form(
+            step_id="location_zone",
+            data_schema=self._location_zone_schema(
+                current
+                if user_input is None
+                else {
+                    "id": user_input.get("location_zone_id", ""),
+                    "name": user_input.get("location_zone_name", ""),
+                    "access_points": user_input.get("location_access_points", []),
+                    "areas": user_input.get("location_areas", []),
+                    "entities": user_input.get("location_entities", []),
+                },
+                editing=editing_id is not None,
+            ),
+            errors=errors,
+        )
+
+    async def async_step_location_delete(self, user_input=None):
+        self._ensure_draft()
+        errors = {}
+        if user_input is not None:
+            if not user_input.get("confirm"):
+                errors["confirm"] = "confirmation_required"
+            else:
+                context_id = user_input["location_zone_id"]
+                self._draft_options["location_contexts"] = [
+                    zone for zone in self._location_zones() if zone["id"] != context_id
+                ]
+                return await self.async_step_location()
+        fields = dict(self._zone_selector().schema)
+        fields[vol.Required("confirm", default=False)] = selector.BooleanSelector()
+        return self.async_show_form(
+            step_id="location_delete", data_schema=vol.Schema(fields), errors=errors
+        )
+
+    async def async_step_location_unassigned(self, user_input=None):
+        if user_input is not None:
+            return await self.async_step_location()
+        assigned = {value for zone in self._location_zones() for value in zone["access_points"]}
+        unassigned = [value for value in self._observed_access_points() if value not in assigned]
+        return self.async_show_form(
+            step_id="location_unassigned",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "access_points": ", ".join(unassigned) if unassigned else "—"
+            },
+        )
 
     async def async_step_dashboard(self, user_input=None):
         return await self._section("dashboard", user_input)

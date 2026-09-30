@@ -11,6 +11,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities = [
         ContextualSensor(entry.runtime_data, entry),
         AdaptiveLearningSensor(entry.runtime_data, entry),
+        LocationContextSensor(entry.runtime_data, entry),
+        ConnectedToSensor(entry.runtime_data, entry),
+        LocationConfidenceSensor(entry.runtime_data, entry),
+        LastLocationSensor(entry.runtime_data, entry),
     ]
     if entry.runtime_data.options["quick_access_enabled"]:
         entities.extend(
@@ -173,3 +177,93 @@ class AdaptiveLearningSensor(CoordinatorEntity, SensorEntity):
             "last_learning_update": metrics["last_learning_update"],
             **dashboard,
         }
+
+
+class _LocationSensor(CoordinatorEntity, SensorEntity):
+    """Base for stable location entities backed by the coordinator snapshot."""
+
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator, entry, suffix: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_{suffix}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.title,
+            manufacturer=NAME,
+            model=NAME,
+            sw_version=VERSION,
+        )
+
+
+class LocationContextSensor(_LocationSensor):
+    _attr_translation_key = "location"
+    _attr_icon = "mdi:map-marker-radius"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "location")
+        self.entity_id = "sensor.contextual_control_location"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("location_context")
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data
+        return {
+            "connected_to": data.get("connected_to"),
+            "last_connected_to": data.get("last_connected_to"),
+            "last_location": data.get("last_location_context"),
+            "last_changed": data.get("location_last_changed"),
+            "source": data.get("location_source"),
+            "confidence": data.get("location_confidence"),
+            "device_tracker": data.get("location_tracker"),
+            "areas": data.get("location_area_ids", []),
+            "relevant_entities": data.get("location_entity_ids", []),
+            "pending_location": data.get("location_pending_context"),
+            "unassigned_access_points": data.get("unassigned_access_points", []),
+        }
+
+
+class ConnectedToSensor(_LocationSensor):
+    _attr_translation_key = "connected_to"
+    _attr_icon = "mdi:access-point"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "connected_to")
+        self.entity_id = "sensor.contextual_control_connected_to"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("connected_to")
+
+
+class LocationConfidenceSensor(_LocationSensor):
+    _attr_translation_key = "location_confidence"
+    _attr_icon = "mdi:signal"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "location_confidence")
+        self.entity_id = "sensor.contextual_control_location_confidence"
+
+    @property
+    def native_value(self):
+        return round(float(self.coordinator.data.get("location_confidence", 0)), 2)
+
+
+class LastLocationSensor(_LocationSensor):
+    _attr_translation_key = "last_location"
+    _attr_icon = "mdi:map-marker-check"
+
+    def __init__(self, coordinator, entry) -> None:
+        super().__init__(coordinator, entry, "last_location")
+        self.entity_id = "sensor.contextual_control_last_location"
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get("last_location_context")
+
+    @property
+    def extra_state_attributes(self):
+        return {"changed_at": self.coordinator.data.get("location_last_changed")}
