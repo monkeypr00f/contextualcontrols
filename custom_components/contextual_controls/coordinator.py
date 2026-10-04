@@ -930,7 +930,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if domain == "number":
             try:
                 value = float(state.state) + delta * float(state.attributes.get("step", 1))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return {"entity_id": entity_id, "success": False, "reason": "invalid_value"}
             value = max(
                 float(state.attributes.get("min", value)),
@@ -953,6 +953,15 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
             value = max(0.0, min(1.0, float(current) + delta * 0.05))
             action_domain, action_name, data = "media_player", "volume_set", {"volume_level": value}
+        elif domain == "light":
+            current = state.attributes.get("brightness")
+            if not isinstance(current, (int, float)):
+                current = 128 if state.state != "off" else 0
+            value = max(0, min(255, round(float(current) + delta * 13)))
+            if value == 0:
+                action_domain, action_name, data = "light", "turn_off", {}
+            else:
+                action_domain, action_name, data = "light", "turn_on", {"brightness": value}
         else:
             return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
         if not self.hass.services.has_service(action_domain, action_name):

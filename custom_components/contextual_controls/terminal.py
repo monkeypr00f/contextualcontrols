@@ -103,9 +103,7 @@ class TerminalManager:
         )
         for slot in range(1, MAX_TERMINAL_ACTIONS + 1):
             detail = self._slot_detail(session, slot)
-            self.hass.states.async_set(
-                f"{prefix}_action_{slot}", detail.get("label", ""), detail
-            )
+            self.hass.states.async_set(f"{prefix}_action_{slot}", detail.get("label", ""), detail)
 
     async def async_input(
         self,
@@ -139,6 +137,13 @@ class TerminalManager:
             await self._emit(terminal_id, session, "adjust", selected, detail, result)
             await self.async_publish(terminal_id)
             return result
+        if input_name == "adjust" and detail["kind"] == "LIGHT":
+            session.mode, session.active_slot = "adjust", selected
+            await self._emit(
+                terminal_id, session, "enter_adjust", selected, detail, {"success": True}
+            )
+            await self.async_publish(terminal_id)
+            return {"success": True, "mode": session.mode}
         if input_name == "activate" and detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}:
             if session.mode == "adjust":
                 session.mode, session.active_slot = "menu", None
@@ -197,14 +202,14 @@ class TerminalManager:
         if state is None or not self.coordinator._quick_target_valid(entity_id):
             return {"slot": slot, "available": False, "label": ""}
         domain = entity_id.partition(".")[0]
-        kind = {
-            "number": "NUMBER", "climate": "CLIMATE", "media_player": "MEDIA"
-        }.get(
+        kind = {"number": "NUMBER", "climate": "CLIMATE", "media_player": "MEDIA"}.get(
             domain,
             "TOGGLE" if domain in {"light", "switch", "fan", "input_boolean"} else "ACTION",
         )
+        if domain == "light" and self._light_supports_brightness(state.attributes):
+            kind = "LIGHT"
         label = str(state.attributes.get("friendly_name", entity_id))
-        if kind in {"NUMBER", "CLIMATE", "MEDIA"}:
+        if kind in {"NUMBER", "CLIMATE", "MEDIA", "LIGHT"}:
             value = self._value_label(domain, state.state, state.attributes)
             label = f"{label}: {value}" if value else label
         return {
@@ -221,6 +226,11 @@ class TerminalManager:
 
     @staticmethod
     def _value_label(domain: str, state: str, attributes: dict[str, Any]) -> str:
+        if domain == "light":
+            brightness = attributes.get("brightness")
+            if isinstance(brightness, (float, int)):
+                return f"{round(float(brightness) / 255 * 100)}%"
+            return "spenta" if state == "off" else state
         if domain == "media_player":
             volume = attributes.get("volume_level")
             return f"{round(float(volume) * 100)}%" if isinstance(volume, (float, int)) else state
@@ -228,6 +238,17 @@ class TerminalManager:
             value = attributes.get("temperature")
             return f"{value}°" if value is not None else state
         return state
+
+    @staticmethod
+    def _light_supports_brightness(attributes: dict[str, Any]) -> bool:
+        """Brightness is exposed by HA only for lights that can be dimmed."""
+        if "brightness" in attributes:
+            return True
+        color_modes = attributes.get("supported_color_modes", [])
+        return any(
+            mode in {"brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"}
+            for mode in color_modes
+        )
 
     def _session(self, terminal_id: str) -> TerminalSession:
         try:
