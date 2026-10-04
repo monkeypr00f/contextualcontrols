@@ -76,6 +76,9 @@ DEFAULTS = {
     "quick_access_response": True,
     "quick_access_track_usage": True,
     "quick_access_usage_weight": 100,
+    # Comma-separated `terminal_id:area_id` pairs. Area ids intentionally stay
+    # HA-internal IDs, so terminals do not need entity IDs or ranking rules.
+    "terminal_mappings": "",
     "adaptive_learning": True,
     "sequence_learning": True,
     "sequence_window_minutes": 30,

@@ -98,3 +98,48 @@ execute_slot:
             - action_button
             - control_center
             - unknown
+
+terminal_input:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: contextual_controls
+    terminal:
+      required: true
+      selector:
+        text: {}
+    input:
+      required: true
+      selector:
+        select:
+          options:
+            - select
+            - activate
+            - back
+    slot:
+      selector:
+        number:
+          min: 1
+          max: 5
+          mode: box
+    delta:
+      selector:
+        number:
+          min: -20
+          max: 20
+          mode: box
+    revision:
+      selector:
+        text: {}
+
+refresh_terminal:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: contextual_controls
+    terminal:
+      required: true
+      selector:
+        text: {}
