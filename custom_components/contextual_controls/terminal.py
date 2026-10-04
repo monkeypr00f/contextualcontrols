@@ -18,44 +18,41 @@ MAX_TERMINAL_ACTIONS = 5
 EVENT_TERMINAL_INPUT = "contextual_controls_terminal_input"
 
 
-def parse_terminal_mappings(value: str) -> dict[str, str]:
-    """Parse `terminal:area` pairs without accepting ambiguous identifiers."""
-    mappings: dict[str, str] = {}
+def parse_terminal_mappings(value: str) -> dict[str, tuple[str, ...]]:
+    """Parse `terminal:area+area` pairs without accepting ambiguous identifiers."""
+    mappings: dict[str, tuple[str, ...]] = {}
     for item in value.split(","):
         item = item.strip()
         if not item:
             continue
-        terminal, separator, area_id = item.partition(":")
+        terminal, separator, raw_area_ids = item.partition(":")
         terminal = terminal.strip()
-        area_id = area_id.strip()
-        if not separator or not terminal or not area_id:
-            raise ValueError("terminal mappings must use terminal_id:area_id")
+        area_ids = tuple(area_id.strip() for area_id in raw_area_ids.split("+"))
+        if not separator or not terminal or not all(area_ids):
+            raise ValueError("terminal mappings must use terminal_id:area_id[+area_id]")
         if terminal in mappings:
             raise ValueError(f"duplicate terminal id: {terminal}")
-        areas = area_id.split("+")
-        if not terminal.replace("_", "").isalnum() or any(
-            not area.replace("_", "").isalnum() for area in areas
+        if (
+            not terminal.replace("_", "").isalnum()
+            or any(not area_id.replace("_", "").isalnum() for area_id in area_ids)
+            or len(set(area_ids)) != len(area_ids)
         ):
             raise ValueError(
                 "terminal and area ids may contain only letters, numbers and underscores"
             )
-        mappings[terminal] = area_id
+        mappings[terminal] = area_ids
     return mappings
 
 
 @dataclass(slots=True)
 class TerminalSession:
     terminal_id: str
-    area_id: str
+    area_ids: tuple[str, ...]
     slots: SlotManager
     mode: str = "menu"
     active_slot: int | None = None
     feedback: str = "ready"
     adjusted_action: str | None = None
-
-    @property
-    def area_ids(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(self.area_id.split("+")))
 
 
 class TerminalManager:
@@ -69,19 +66,20 @@ class TerminalManager:
     async def async_configure(self) -> None:
         mappings = parse_terminal_mappings(self.coordinator.options["terminal_mappings"])
         old = self.sessions
-        self.sessions = {
-            terminal_id: old.get(terminal_id)
-            if terminal_id in old and old[terminal_id].area_id == area_id
-            else TerminalSession(
+        self.sessions = {}
+        for terminal_id, area_ids in mappings.items():
+            existing = old.get(terminal_id)
+            if existing is not None and existing.area_ids == area_ids:
+                self.sessions[terminal_id] = existing
+                continue
+            self.sessions[terminal_id] = TerminalSession(
                 terminal_id,
-                area_id,
+                area_ids,
                 SlotManager(
                     MAX_TERMINAL_ACTIONS,
                     int(self.coordinator.options["quick_access_stability"]),
                 ),
             )
-            for terminal_id, area_id in mappings.items()
-        }
         await self.async_publish_all()
 
     async def async_publish_all(self) -> None:
@@ -101,7 +99,9 @@ class TerminalManager:
             session.slots.update(rows, now, self.coordinator._quick_target_valid)
         registry = ar.async_get(self.hass)
         title = " · ".join(
-            area.name if (area := registry.async_get_area(area_id)) else area_id.replace("_", " ").title()
+            area.name
+            if (area := registry.async_get_area(area_id))
+            else area_id.replace("_", " ").title()
             for area_id in session.area_ids
         )
         prefix = f"sensor.contextual_controls_{terminal_id}"
@@ -109,8 +109,13 @@ class TerminalManager:
         self.hass.states.async_set(
             f"{prefix}_status",
             f"{sum(item is not None for item in session.slots.slots)} controlli disponibili"
-            if any(session.slots.slots) else "Nessuna azione disponibile",
-            {"terminal": terminal_id, "area_id": session.area_id, "area_ids": list(session.area_ids)},
+            if any(session.slots.slots)
+            else "Nessuna azione disponibile",
+            {
+                "terminal": terminal_id,
+                "area_id": session.area_ids[0],
+                "area_ids": list(session.area_ids),
+            },
         )
         self.hass.states.async_set(f"{prefix}_mode", session.mode, {"terminal": terminal_id})
         # This is deliberately a separate state rather than an attribute: ESPHome's
@@ -123,9 +128,7 @@ class TerminalManager:
         )
         for slot in range(1, MAX_TERMINAL_ACTIONS + 1):
             detail = self._slot_detail(session, slot)
-            self.hass.states.async_set(
-                f"{prefix}_action_{slot}", detail.get("label", ""), detail
-            )
+            self.hass.states.async_set(f"{prefix}_action_{slot}", detail.get("label", ""), detail)
 
     async def async_input(
         self,
@@ -151,7 +154,11 @@ class TerminalManager:
             return {"success": True, "mode": session.mode}
         if slot is None or not 1 <= slot <= MAX_TERMINAL_ACTIONS:
             return {"success": False, "reason": "invalid_slot"}
-        selected = session.active_slot if session.mode == "adjust" else slot
+        selected = (
+            session.active_slot
+            if session.mode == "adjust" and session.active_slot is not None
+            else slot
+        )
         detail = self._slot_detail(session, selected)
         if not detail.get("available"):
             session.feedback = "empty"
@@ -166,10 +173,24 @@ class TerminalManager:
             await self._emit(terminal_id, session, "adjust", selected, detail, result)
             # A successful tick is still an editing operation, not a completed
             # command. Keep the dial on its value-control view until press.
-            session.feedback = "adjust" if result.get("success") else str(result.get("reason", "error"))
+            session.feedback = (
+                "adjust" if result.get("success") else str(result.get("reason", "error"))
+            )
             await self.async_publish(terminal_id)
             return result
-        if input_name == "activate" and detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}:
+        if input_name == "adjust" and detail["kind"] == "LIGHT":
+            session.mode, session.active_slot = "adjust", selected
+            session.adjusted_action = None
+            session.feedback = "adjust"
+            await self._emit(
+                terminal_id, session, "enter_adjust", selected, detail, {"success": True}
+            )
+            await self.async_publish(terminal_id)
+            return {"success": True, "mode": session.mode}
+        if input_name == "activate" and (
+            detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}
+            or (detail["kind"] == "LIGHT" and session.mode == "adjust")
+        ):
             if session.mode == "adjust":
                 await self._track_adjustment(session, context)
                 session.mode, session.active_slot = "menu", None
@@ -225,7 +246,7 @@ class TerminalManager:
             {
                 "timestamp": dt_util.utcnow().isoformat(),
                 "terminal": terminal_id,
-                "area_id": session.area_id,
+                "area_id": session.area_ids[0],
                 "area_ids": list(session.area_ids),
                 "input": input_name,
                 "slot": selected,
@@ -255,18 +276,17 @@ class TerminalManager:
         )
         # A dimmer/position is a value control; a simple light remains a
         # toggle. This keeps the projected type truthful to actual capability.
-        if domain == "light" and (
-            isinstance(state.attributes.get("brightness"), int)
-            or any(mode not in {"onoff", "unknown"} for mode in state.attributes.get("supported_color_modes", []))
-        ):
-            kind = "NUMBER"
+        if domain == "light" and self._light_supports_brightness(state.attributes):
+            kind = "LIGHT"
         elif domain == "cover" and isinstance(state.attributes.get("current_position"), int):
             kind = "NUMBER"
         label = str(state.attributes.get("friendly_name", entity_id))
-        if kind in {"NUMBER", "CLIMATE", "MEDIA"}:
+        if kind in {"NUMBER", "CLIMATE", "MEDIA", "LIGHT"}:
             value = self._value_label(domain, state.state, state.attributes)
             label = f"{label}: {value}" if value else label
-        value, minimum, maximum, step, unit = self._control_values(domain, state.state, state.attributes)
+        value, minimum, maximum, step, unit = self._control_values(
+            domain, state.state, state.attributes
+        )
         return {
             "slot": slot,
             "available": True,
@@ -315,7 +335,7 @@ class TerminalManager:
                     float(attributes.get("step", 1)),
                     str(attributes.get("unit_of_measurement", "")),
                 )
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return None, None, None, None, ""
         if domain == "climate":
             value = attributes.get("temperature")
@@ -336,6 +356,17 @@ class TerminalManager:
         if domain == "cover" and isinstance(attributes.get("current_position"), int):
             return attributes["current_position"], 0, 100, 5, "%"
         return state, None, None, None, ""
+
+    @staticmethod
+    def _light_supports_brightness(attributes: dict[str, Any]) -> bool:
+        """Brightness is exposed by HA only for lights that can be dimmed."""
+        if "brightness" in attributes:
+            return True
+        color_modes = attributes.get("supported_color_modes", [])
+        return any(
+            mode in {"brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww"}
+            for mode in color_modes
+        )
 
     def _session(self, terminal_id: str) -> TerminalSession:
         try:

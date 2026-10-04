@@ -8,8 +8,9 @@ and resolves each selected slot again in Home Assistant.
 ## Configure terminals
 
 Open **Settings → Devices & services → Contextual Controls → Configure →
-Physical terminals** and set `Terminal-to-area mappings` to comma-separated
-`terminal_id:area_id` pairs:
+Physical terminals**. Enter a terminal ID and select its areas using the
+multi-area selector. Save and repeat for additional terminals. The internal
+mapping format remains compatible with existing installations:
 
 ```text
 cc_salotto:salotto+sala_da_pranzo+cucina,cc_camera:camera
@@ -42,8 +43,9 @@ The ESPHome terminal calls `contextual_controls.terminal_input` with:
 
 | Input | Meaning |
 |---|---|
-| `select` | Move selection, or adjust the currently active NUMBER/CLIMATE/MEDIA control. |
-| `activate` | Execute ACTION/TOGGLE; enter or confirm adjustment mode for NUMBER/CLIMATE/MEDIA. |
+| `select` | Move selection, or adjust the active LIGHT/NUMBER/CLIMATE/MEDIA control. |
+| `adjust` | Enter brightness adjustment for a LIGHT control. |
+| `activate` | Execute ACTION/TOGGLE; toggle LIGHT from the menu; enter NUMBER/CLIMATE/MEDIA adjustment or confirm an active value control. |
 | `back` | Leave adjustment mode; it is home/no-op from the main list. |
 
 The service only accepts a terminal id, 1-based slot, delta and revision. It
@@ -82,7 +84,7 @@ reason as attributes. `feedback` is a small transport state (`ready`, `adjust`,
 
 ## ESPHome
 
-Use [`context_dial.yaml`](../../deliverables/context_dial/esphome/context_dial.yaml).
+Use [`context_dial.yaml`](../esphome/context_dial.yaml).
 It is an LVGL UI with a focused three-card carousel, value-control, loading,
 result, offline and Display settings views. Its only per-device substitutions are
 `device_name`, `friendly_name`, `terminal_id` and `cc_entity_prefix`.
@@ -97,3 +99,12 @@ when Home Assistant sends control-mode or result updates.
 Enable
 **Allow the device to perform Home Assistant actions** in the ESPHome device's
 Configure dialog before testing.
+
+## Validation of the v0.10.5 merge
+
+The integration tests (119) pass with Python 3.14; static checks also pass.
+ESPHome 2026.9.1 validates the configuration and generates its C++ source.
+This is not a completed binary build or a hardware acceptance test. Verify
+orientation, colours, encoder operation, light adjustment and wake-only input
+on the physical Dial after flashing. The release's Python 3.14.2 minimum is
+unchanged.

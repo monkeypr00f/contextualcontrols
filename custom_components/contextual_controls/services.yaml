@@ -116,6 +116,7 @@ terminal_input:
           options:
             - select
             - activate
+            - adjust
             - back
     slot:
       selector:

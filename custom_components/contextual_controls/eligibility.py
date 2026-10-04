@@ -65,6 +65,9 @@ def terminal_order(
     still pass the same exclusion/availability/pinned policy as the dashboard.
     """
     seen = {item.entity_id for item in ranked}
-    fallback = [Ranked(entity, 0.0, "available", source="available")
-                for entity in sorted(candidates) if entity not in seen]
+    fallback = [
+        Ranked(entity, 0.0, "available", source="available")
+        for entity in sorted(candidates)
+        if entity not in seen
+    ]
     return compose(ranked + fallback, candidates, {**options, "suggestion_count": len(candidates)})

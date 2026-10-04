@@ -351,7 +351,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 targets = selected.referenced | selected.indirectly_referenced
                 if "all" in selection.entity_ids:
                     targets = self.eligible_ids.copy()
-            except (TypeError, ValueError, KeyError):
+            except TypeError, ValueError, KeyError:
                 _LOGGER.debug("Ignoring invalid service target")
                 return
         now = dt_util.utcnow()
@@ -549,8 +549,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else []
         )
         self.terminal_rows = [
-            {"entity_id": item.entity_id, "score": item.score, "reason": item.reason_key,
-             "source": item.source, "pinned": item.pinned}
+            {
+                "entity_id": item.entity_id,
+                "score": item.score,
+                "reason": item.reason_key,
+                "source": item.source,
+                "pinned": item.pinned,
+            }
             for item in terminal_selected
         ]
         rows = []
@@ -944,7 +949,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if domain == "number":
             try:
                 value = float(state.state) + delta * float(state.attributes.get("step", 1))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return {"entity_id": entity_id, "success": False, "reason": "invalid_value"}
             value = max(
                 float(state.attributes.get("min", value)),
@@ -968,12 +973,13 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             value = max(0.0, min(1.0, float(current) + delta * 0.05))
             action_domain, action_name, data = "media_player", "volume_set", {"volume_level": value}
         elif domain == "light":
-            current = state.attributes.get("brightness") or (0 if state.state == "off" else None)
-            if not isinstance(current, int):
-                return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
-            value = max(0, min(255, current + delta * 13))
+            current = state.attributes.get("brightness")
+            if not isinstance(current, (int, float)):
+                current = 128 if state.state != "off" else 0
+            value = max(0, min(255, round(float(current) + delta * 13)))
             action_domain, action_name, data = (
-                ("light", "turn_on", {"brightness": value}) if value > 0
+                ("light", "turn_on", {"brightness": value})
+                if value > 0
                 else ("light", "turn_off", {})
             )
         elif domain == "cover":
@@ -986,8 +992,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
         if not self.hass.services.has_service(action_domain, action_name):
             return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
-        rejection = safety_rejection(entity_id, self.options["quick_access_safety_mode"],
-                                     self.options["quick_access_sensitive_entities"], False)
+        rejection = safety_rejection(
+            entity_id,
+            self.options["quick_access_safety_mode"],
+            self.options["quick_access_sensitive_entities"],
+            False,
+        )
         if rejection:
             return {"entity_id": entity_id, "success": False, "reason": rejection}
         try:

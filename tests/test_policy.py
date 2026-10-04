@@ -3,7 +3,12 @@ from copy import deepcopy
 import pytest
 
 from custom_components.contextual_controls.const import DEFAULTS
-from custom_components.contextual_controls.eligibility import available, compose, eligible, terminal_order
+from custom_components.contextual_controls.eligibility import (
+    available,
+    compose,
+    eligible,
+    terminal_order,
+)
 from custom_components.contextual_controls.models import Candidate, Ranked
 from custom_components.contextual_controls.tracking import (
     Deduplicator,
@@ -96,8 +101,11 @@ def test_terminal_scope_does_not_lose_actions_beyond_dashboard_limit(options):
     ranked = [Ranked(entity, 0.9, "habit") for entity in candidates]
     assert [item.entity_id for item in compose(ranked, candidates, options)] == ["light.other"]
     areas = {"salotto", "sala_da_pranzo", "cucina"}
-    scoped = [item.entity_id for item in terminal_order(ranked, candidates, options)
-              if candidates[item.entity_id].area_id in areas]
+    scoped = [
+        item.entity_id
+        for item in terminal_order(ranked, candidates, options)
+        if candidates[item.entity_id].area_id in areas
+    ]
     assert scoped == ["light.living", "light.dining", "light.kitchen"]
 
 
