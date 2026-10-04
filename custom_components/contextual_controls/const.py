@@ -1,7 +1,7 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.10.4"
+VERSION = "0.10.5"
 NAME = "Contextual Controls"
 STORAGE_VERSION = 7
 MAX_RECORDS = 50_000
@@ -76,8 +76,8 @@ DEFAULTS = {
     "quick_access_response": True,
     "quick_access_track_usage": True,
     "quick_access_usage_weight": 100,
-    # Comma-separated `terminal_id:area_id` pairs. Area ids intentionally stay
-    # HA-internal IDs, so terminals do not need entity IDs or ranking rules.
+    # Comma-separated `terminal_id:area_id+area_id` pairs. Area ids intentionally
+    # stay HA-internal IDs, so terminals do not need entity IDs or ranking rules.
     "terminal_mappings": "",
     "adaptive_learning": True,
     "sequence_learning": True,

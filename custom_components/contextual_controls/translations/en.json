@@ -228,15 +228,15 @@
       },
       "terminals": {
         "title": "Physical terminals",
-        "description": "Add or update one terminal at a time. Choose its Home Assistant area from the list; the technical ID must match the `terminal_id` set in its ESPHome firmware. Configured: {configured_terminals}",
+        "description": "Add or update one terminal at a time. Choose one or more Home Assistant areas; the technical ID must match the `terminal_id` set in its ESPHome firmware. Configured: {configured_terminals}",
         "data": {
           "terminal_id": "Terminal ID",
-          "terminal_area": "Area",
+          "terminal_areas": "Areas",
           "remove_terminal": "Remove a terminal"
         },
         "data_description": {
           "terminal_id": "The ID in the ESPHome firmware, for example cc_cucina.",
-          "terminal_area": "The terminal receives ranked actions for this area.",
+          "terminal_areas": "The terminal receives one ranked list combining these areas.",
           "remove_terminal": "Select a terminal only when you want to remove it."
         }
       },
@@ -365,9 +365,9 @@
       "invalid_location_id": "Use lowercase letters, numbers and underscores only.",
       "duplicate_location_id": "A context with this ID already exists.",
       "location_name_required": "Enter a name for the context.",
-      "invalid_terminal_mappings": "Use comma-separated terminal_id:area_id pairs.",
+      "invalid_terminal_mappings": "Use comma-separated terminal_id:area_id pairs; join multiple areas with +.",
       "terminal_id_required": "Enter the terminal ID.",
-      "terminal_area_required": "Choose an area for the terminal.",
+      "terminal_area_required": "Choose at least one area for the terminal.",
       "invalid_terminal_id": "Use only letters, numbers, and underscores in the terminal ID."
     }
   },

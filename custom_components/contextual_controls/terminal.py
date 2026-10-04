@@ -18,32 +18,36 @@ MAX_TERMINAL_ACTIONS = 5
 EVENT_TERMINAL_INPUT = "contextual_controls_terminal_input"
 
 
-def parse_terminal_mappings(value: str) -> dict[str, str]:
-    """Parse `terminal:area` pairs without accepting ambiguous identifiers."""
-    mappings: dict[str, str] = {}
+def parse_terminal_mappings(value: str) -> dict[str, tuple[str, ...]]:
+    """Parse `terminal:area+area` pairs without accepting ambiguous identifiers."""
+    mappings: dict[str, tuple[str, ...]] = {}
     for item in value.split(","):
         item = item.strip()
         if not item:
             continue
-        terminal, separator, area_id = item.partition(":")
+        terminal, separator, raw_area_ids = item.partition(":")
         terminal = terminal.strip()
-        area_id = area_id.strip()
-        if not separator or not terminal or not area_id:
-            raise ValueError("terminal mappings must use terminal_id:area_id")
+        area_ids = tuple(area_id.strip() for area_id in raw_area_ids.split("+"))
+        if not separator or not terminal or not all(area_ids):
+            raise ValueError("terminal mappings must use terminal_id:area_id[+area_id]")
         if terminal in mappings:
             raise ValueError(f"duplicate terminal id: {terminal}")
-        if not terminal.replace("_", "").isalnum() or not area_id.replace("_", "").isalnum():
+        if (
+            not terminal.replace("_", "").isalnum()
+            or any(not area_id.replace("_", "").isalnum() for area_id in area_ids)
+            or len(set(area_ids)) != len(area_ids)
+        ):
             raise ValueError(
                 "terminal and area ids may contain only letters, numbers and underscores"
             )
-        mappings[terminal] = area_id
+        mappings[terminal] = area_ids
     return mappings
 
 
 @dataclass(slots=True)
 class TerminalSession:
     terminal_id: str
-    area_id: str
+    area_ids: tuple[str, ...]
     slots: SlotManager
     mode: str = "menu"
     active_slot: int | None = None
@@ -61,14 +65,14 @@ class TerminalManager:
         mappings = parse_terminal_mappings(self.coordinator.options["terminal_mappings"])
         old = self.sessions
         self.sessions = {}
-        for terminal_id, area_id in mappings.items():
+        for terminal_id, area_ids in mappings.items():
             existing = old.get(terminal_id)
-            if existing is not None and existing.area_id == area_id:
+            if existing is not None and existing.area_ids == area_ids:
                 self.sessions[terminal_id] = existing
                 continue
             self.sessions[terminal_id] = TerminalSession(
                 terminal_id,
-                area_id,
+                area_ids,
                 SlotManager(
                     MAX_TERMINAL_ACTIONS,
                     int(self.coordinator.options["quick_access_stability"]),
@@ -86,17 +90,27 @@ class TerminalManager:
         rows = [
             row
             for row in (self.coordinator.data or {}).get("entities", [])
-            if self.coordinator.areas.get(row["entity_id"]) == session.area_id
+            if self.coordinator.areas.get(row["entity_id"]) in session.area_ids
         ]
         session.slots.update(rows, now, self.coordinator._quick_target_valid)
-        area = ar.async_get(self.hass).async_get_area(session.area_id)
-        title = area.name if area else session.area_id.replace("_", " ").title()
+        areas = ar.async_get(self.hass)
+        area_names = [
+            area.name
+            if (area := areas.async_get_area(area_id))
+            else area_id.replace("_", " ").title()
+            for area_id in session.area_ids
+        ]
+        title = " · ".join(area_names)
         prefix = f"sensor.contextual_controls_{terminal_id}"
         self.hass.states.async_set(f"{prefix}_title", title, {"terminal": terminal_id})
         self.hass.states.async_set(
             f"{prefix}_status",
             "Controlli suggeriti" if any(session.slots.slots) else "Nessuna azione disponibile",
-            {"terminal": terminal_id, "area_id": session.area_id},
+            {
+                "terminal": terminal_id,
+                "area_id": session.area_ids[0],
+                "area_ids": list(session.area_ids),
+            },
         )
         self.hass.states.async_set(f"{prefix}_mode", session.mode, {"terminal": terminal_id})
         self.hass.states.async_set(
@@ -187,7 +201,8 @@ class TerminalManager:
             {
                 "timestamp": dt_util.utcnow().isoformat(),
                 "terminal": terminal_id,
-                "area_id": session.area_id,
+                "area_id": session.area_ids[0],
+                "area_ids": list(session.area_ids),
                 "input": input_name,
                 "slot": selected,
                 "action_id": detail["entity_id"],

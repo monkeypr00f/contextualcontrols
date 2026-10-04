@@ -260,11 +260,13 @@ def schema_for(keys, options):
     return vol.Schema(fields)
 
 
-def terminal_schema(mappings: dict[str, str]) -> vol.Schema:
+def terminal_schema(mappings: dict[str, tuple[str, ...]]) -> vol.Schema:
     """Use native selectors instead of exposing the stored mapping syntax."""
     fields: dict = {
         vol.Optional("terminal_id"): selector.TextSelector(),
-        vol.Optional("terminal_area"): selector.AreaSelector(),
+        vol.Optional("terminal_areas"): selector.AreaSelector(
+            selector.AreaSelectorConfig(multiple=True)
+        ),
     }
     if mappings:
         fields[vol.Optional("remove_terminal")] = selector.SelectSelector(
@@ -275,9 +277,11 @@ def terminal_schema(mappings: dict[str, str]) -> vol.Schema:
     return vol.Schema(fields)
 
 
-def serialize_terminal_mappings(mappings: dict[str, str]) -> str:
+def serialize_terminal_mappings(mappings: dict[str, tuple[str, ...]]) -> str:
     """Persist mappings in the backward-compatible compact options format."""
-    return ",".join(f"{terminal}:{area}" for terminal, area in sorted(mappings.items()))
+    return ",".join(
+        f"{terminal}:{'+'.join(area_ids)}" for terminal, area_ids in sorted(mappings.items())
+    )
 
 
 def normalize(values):
@@ -436,18 +440,19 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
         mappings = parse_terminal_mappings(options["terminal_mappings"])
         if user_input is not None:
             terminal_id = str(user_input.get("terminal_id", "")).strip()
-            area_id = user_input.get("terminal_area")
+            raw_area_ids = user_input.get("terminal_areas", [])
+            area_ids = (raw_area_ids,) if isinstance(raw_area_ids, str) else tuple(raw_area_ids)
             remove_terminal = user_input.get("remove_terminal")
             errors = {}
-            if terminal_id or area_id:
+            if terminal_id or area_ids:
                 if not terminal_id:
                     errors["terminal_id"] = "terminal_id_required"
-                elif not area_id:
-                    errors["terminal_area"] = "terminal_area_required"
+                elif not area_ids:
+                    errors["terminal_areas"] = "terminal_area_required"
                 elif not terminal_id.replace("_", "").isalnum():
                     errors["terminal_id"] = "invalid_terminal_id"
                 else:
-                    mappings[terminal_id] = area_id
+                    mappings[terminal_id] = area_ids
             if remove_terminal:
                 mappings.pop(remove_terminal, None)
             if errors:
@@ -471,15 +476,18 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
             description_placeholders={"configured_terminals": self._terminal_summary(mappings)},
         )
 
-    def _terminal_summary(self, mappings: dict[str, str]) -> str:
+    def _terminal_summary(self, mappings: dict[str, tuple[str, ...]]) -> str:
         """Provide a friendly summary while the option flow remains open."""
         if not mappings:
             return "Nessun terminale configurato."
         areas = ar.async_get(self.hass)
         summary = []
-        for terminal, area_id in sorted(mappings.items()):
-            area = areas.async_get_area(area_id)
-            summary.append(f"{terminal} → {area.name if area else area_id}")
+        for terminal, area_ids in sorted(mappings.items()):
+            names = []
+            for area_id in area_ids:
+                area = areas.async_get_area(area_id)
+                names.append(area.name if area else area_id)
+            summary.append(f"{terminal} → {' + '.join(names)}")
         return ", ".join(summary)
 
     def _location_zones(self):

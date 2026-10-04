@@ -8,8 +8,9 @@ and resolves each selected slot again in Home Assistant.
 ## Configure terminals
 
 Open **Settings → Devices & services → Contextual Controls → Configure →
-Physical terminals** and set `Terminal-to-area mappings` to comma-separated
-`terminal_id:area_id` pairs:
+Physical terminals**, enter the terminal ID and select one or more areas. A
+terminal then receives one ranked list combining all selected areas. The stored
+format remains compact for backward compatibility; for example:
 
 ```text
 cc_cucina:cucina,cc_soggiorno:soggiorno
