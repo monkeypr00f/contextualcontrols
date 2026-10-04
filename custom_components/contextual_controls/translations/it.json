@@ -365,6 +365,7 @@
       "invalid_location_id": "Usa solo lettere minuscole, numeri e underscore.",
       "duplicate_location_id": "Esiste già una zona con questo ID.",
       "location_name_required": "Inserisci un nome per la zona.",
+      "invalid_terminal_mappings": "Usa coppie terminal_id:area_id separate da virgole.",
       "terminal_id_required": "Inserisci l'ID del terminale.",
       "terminal_area_required": "Scegli un'area per il terminale.",
       "invalid_terminal_id": "L'ID del terminale può contenere solo lettere, numeri e trattini bassi."

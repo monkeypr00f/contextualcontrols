@@ -39,6 +39,7 @@
           "ai": "Optional AI",
           "reset": "Reset learning",
           "quick_access": "Quick Access / Apple",
+          "terminals": "Physical terminals",
           "save": "Save and close",
           "adaptive": "Adaptive Learning",
           "adaptive_sources": "Adaptive source weights",
@@ -225,6 +226,20 @@
           "quick_access_usage_weight": "Sets Quick Access usage confidence from 0 to 100."
         }
       },
+      "terminals": {
+        "title": "Physical terminals",
+        "description": "Add or update one terminal at a time. Choose its Home Assistant area from the list; the technical ID must match the `terminal_id` set in its ESPHome firmware. Configured: {configured_terminals}",
+        "data": {
+          "terminal_id": "Terminal ID",
+          "terminal_area": "Area",
+          "remove_terminal": "Remove a terminal"
+        },
+        "data_description": {
+          "terminal_id": "The ID in the ESPHome firmware, for example cc_cucina.",
+          "terminal_area": "The terminal receives ranked actions for this area.",
+          "remove_terminal": "Select a terminal only when you want to remove it."
+        }
+      },
       "adaptive": {
         "title": "Adaptive Learning",
         "description": "Configure the local, explainable layer that learns sequences and suggestion usefulness.",
@@ -349,7 +364,11 @@
       "entity_required": "Select an entity.",
       "invalid_location_id": "Use lowercase letters, numbers and underscores only.",
       "duplicate_location_id": "A context with this ID already exists.",
-      "location_name_required": "Enter a name for the context."
+      "location_name_required": "Enter a name for the context.",
+      "invalid_terminal_mappings": "Use comma-separated terminal_id:area_id pairs.",
+      "terminal_id_required": "Enter the terminal ID.",
+      "terminal_area_required": "Choose an area for the terminal.",
+      "invalid_terminal_id": "Use only letters, numbers, and underscores in the terminal ID."
     }
   },
   "entity": {
