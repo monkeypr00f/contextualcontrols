@@ -60,10 +60,13 @@ class TerminalManager:
     async def async_configure(self) -> None:
         mappings = parse_terminal_mappings(self.coordinator.options["terminal_mappings"])
         old = self.sessions
-        self.sessions = {
-            terminal_id: old.get(terminal_id)
-            if terminal_id in old and old[terminal_id].area_id == area_id
-            else TerminalSession(
+        self.sessions = {}
+        for terminal_id, area_id in mappings.items():
+            existing = old.get(terminal_id)
+            if existing is not None and existing.area_id == area_id:
+                self.sessions[terminal_id] = existing
+                continue
+            self.sessions[terminal_id] = TerminalSession(
                 terminal_id,
                 area_id,
                 SlotManager(
@@ -71,8 +74,6 @@ class TerminalManager:
                     int(self.coordinator.options["quick_access_stability"]),
                 ),
             )
-            for terminal_id, area_id in mappings.items()
-        }
         await self.async_publish_all()
 
     async def async_publish_all(self) -> None:
@@ -125,7 +126,11 @@ class TerminalManager:
             return {"success": True, "mode": session.mode}
         if slot is None or not 1 <= slot <= MAX_TERMINAL_ACTIONS:
             return {"success": False, "reason": "invalid_slot"}
-        selected = session.active_slot if session.mode == "adjust" else slot
+        selected = (
+            session.active_slot
+            if session.mode == "adjust" and session.active_slot is not None
+            else slot
+        )
         detail = self._slot_detail(session, selected)
         if not detail.get("available"):
             await self.async_publish(terminal_id)
