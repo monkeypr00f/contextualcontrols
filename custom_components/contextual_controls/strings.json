@@ -39,6 +39,7 @@
           "ai": "Optional AI",
           "reset": "Reset learning",
           "quick_access": "Quick Access / Apple",
+          "terminals": "Physical terminals",
           "save": "Save and close",
           "adaptive": "Adaptive Learning",
           "adaptive_sources": "Adaptive source weights",
@@ -225,6 +226,15 @@
           "quick_access_usage_weight": "Sets Quick Access usage confidence from 0 to 100."
         }
       },
+      "terminals": {
+        "title": "Physical terminals",
+        "data": {
+          "terminal_mappings": "Terminal-to-area mappings"
+        },
+        "data_description": {
+          "terminal_mappings": "Comma-separated terminal_id:area_id pairs, for example cc_cucina:cucina,cc_soggiorno:soggiorno. Each terminal receives the ranked actions for its assigned area."
+        }
+      },
       "adaptive": {
         "title": "Adaptive Learning",
         "description": "Configure the local, explainable layer that learns sequences and suggestion usefulness.",
@@ -351,6 +361,9 @@
       "duplicate_location_id": "A context with this ID already exists.",
       "location_name_required": "Enter a name for the context."
     }
+  },
+  "errors": {
+    "invalid_terminal_mappings": "Use comma-separated terminal_id:area_id pairs."
   },
   "entity": {
     "sensor": {

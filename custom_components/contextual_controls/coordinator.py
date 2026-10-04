@@ -50,6 +50,7 @@ from .quick_access import (
 )
 from .scoring import rank
 from .storage import History
+from .terminal import TerminalManager
 from .tracking import ACTIONS, Deduplicator, OriginTracker, classify, supports_action
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.sensitive_action_rejections = 0
         self.location = LocationEngine()
         self._location_timer = None
+        self.terminal_manager = TerminalManager(hass, self)
 
     async def async_initialize(self) -> None:
         await self.history.async_load(dt_util.utcnow())
@@ -103,6 +105,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self._initialize_ai()
         self._rebuild()
+        self._unsubscribers.append(self.async_add_listener(self._publish_terminals))
         for event_type, listener in (
             (EVENT_CALL_SERVICE, self._service),
             (EVENT_STATE_CHANGED, self._state),
@@ -114,6 +117,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (ar.EVENT_AREA_REGISTRY_UPDATED, self._topology),
         ):
             self._unsubscribers.append(self.hass.bus.async_listen(event_type, listener))
+
+    @callback
+    def _publish_terminals(self) -> None:
+        """Mirror a completed ranking to configured physical terminals."""
+        if self.terminal_manager.sessions:
+            self.hass.async_create_task(self.terminal_manager.async_publish_all())
 
     def _initialize_ai(self) -> None:
         provider_name = self.options["ai_provider"]
@@ -861,6 +870,142 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "success": True,
                 "slot_generation_id": self.slot_manager.generation,
             }
+
+    async def async_execute_terminal_entity(
+        self, entity_id: str, slot: int, context: Context
+    ) -> dict[str, Any]:
+        """Execute an entity from a terminal-owned stable slot using existing safety/learning."""
+        async with self._quick_access_lock:
+            if not self._quick_target_valid(entity_id):
+                return {"entity_id": entity_id, "success": False, "reason": "unavailable_target"}
+            rejection = safety_rejection(
+                entity_id,
+                self.options["quick_access_safety_mode"],
+                self.options["quick_access_sensitive_entities"],
+                False,
+            )
+            if rejection:
+                self.sensitive_action_rejections += 1
+                return {
+                    "entity_id": entity_id,
+                    "success": False,
+                    "reason": rejection,
+                    "requires_confirmation": True,
+                }
+            state = self.hass.states.get(entity_id)
+            assert state is not None
+            supported = int(state.attributes.get("supported_features", 0) or 0)
+            media_mask = int(MediaPlayerEntityFeature.PLAY | MediaPlayerEntityFeature.PAUSE)
+            action = resolve_default_action(entity_id, state.state, supported, media_mask)
+            if action is None or not self.hass.services.has_service(action.domain, action.service):
+                return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+            self._quick_access_contexts.add(context.id)
+            try:
+                try:
+                    await self.hass.services.async_call(
+                        action.domain,
+                        action.service,
+                        {"entity_id": entity_id},
+                        blocking=True,
+                        context=context,
+                    )
+                except HomeAssistantError:
+                    return {"entity_id": entity_id, "success": False, "reason": "service_error"}
+            finally:
+                self._quick_access_contexts.discard(context.id)
+            await self._async_track_terminal_usage(entity_id, action.name, slot, context)
+            self.quick_access_executions += 1
+            return {"entity_id": entity_id, "action": action.name, "success": True}
+
+    async def async_adjust_terminal_slot(
+        self, entity_id: str, delta: int, context: Context
+    ) -> dict[str, Any]:
+        """Adjust only explicit number, climate or media controls from terminal mode."""
+        if not delta or not self._quick_target_valid(entity_id):
+            return {"entity_id": entity_id, "success": False, "reason": "unavailable_target"}
+        state = self.hass.states.get(entity_id)
+        assert state is not None
+        domain = entity_id.partition(".")[0]
+        data: dict[str, Any]
+        if domain == "number":
+            try:
+                value = float(state.state) + delta * float(state.attributes.get("step", 1))
+            except (TypeError, ValueError):
+                return {"entity_id": entity_id, "success": False, "reason": "invalid_value"}
+            value = max(
+                float(state.attributes.get("min", value)),
+                min(value, float(state.attributes.get("max", value))),
+            )
+            action_domain, action_name, data = "number", "set_value", {"value": value}
+        elif domain == "climate":
+            current = state.attributes.get("temperature")
+            if not isinstance(current, (int, float)):
+                return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+            value = float(current) + delta * float(state.attributes.get("target_temp_step", 0.5))
+            value = max(
+                float(state.attributes.get("min_temp", value)),
+                min(value, float(state.attributes.get("max_temp", value))),
+            )
+            action_domain, action_name, data = "climate", "set_temperature", {"temperature": value}
+        elif domain == "media_player":
+            current = state.attributes.get("volume_level")
+            if not isinstance(current, (int, float)):
+                return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+            value = max(0.0, min(1.0, float(current) + delta * 0.05))
+            action_domain, action_name, data = "media_player", "volume_set", {"volume_level": value}
+        else:
+            return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+        if not self.hass.services.has_service(action_domain, action_name):
+            return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+        await self.hass.services.async_call(
+            action_domain,
+            action_name,
+            {"entity_id": entity_id, **data},
+            blocking=True,
+            context=context,
+        )
+        return {"entity_id": entity_id, "action": action_name, "value": value, "success": True}
+
+    async def _async_track_terminal_usage(
+        self, entity_id: str, action_name: str, slot: int, context: Context
+    ) -> None:
+        if not self.options["quick_access_track_usage"]:
+            return
+        now = dt_util.utcnow()
+        presence, context_states, _active_areas = self._signal_snapshot()
+        record = Usage(
+            now,
+            entity_id,
+            context.user_id,
+            "quick_access",
+            action_name,
+            float(self.options["quick_access_usage_weight"]) / 100,
+            self.areas.get(entity_id),
+            presence,
+            context_states,
+            "context_dial",
+            self.location.snapshot.location_context,
+            self.location.snapshot.connected_to,
+        )
+        local_now = dt_util.as_local(record.timestamp)
+        self.history.learning.record_exposure(
+            [{"entity_id": entity_id, "rank": slot, "slot": slot}],
+            local_now,
+            self._adaptive_settings(),
+            context_hash=context_fingerprint(
+                local_now, presence, context_states, self.location.snapshot.location_context
+            ),
+            source="context_dial",
+            confidence=1.0,
+            user_id=context.user_id,
+            force=True,
+        )
+        self.history.append(record)
+        self.history.learning.resolve_exposure(record, self._adaptive_settings(), now=local_now)
+        self.history.learning.record_action(
+            record, self._adaptive_settings(), local_timestamp=local_now
+        )
+        self._request()
 
     async def async_close(self) -> None:
         self._closed = True

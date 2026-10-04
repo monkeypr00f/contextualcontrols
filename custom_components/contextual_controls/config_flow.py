@@ -58,6 +58,7 @@ SECTIONS = {
         "quick_access_track_usage",
         "quick_access_usage_weight",
     ),
+    "terminals": ("terminal_mappings",),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
     "adaptive": (
         "adaptive_learning",
@@ -171,7 +172,9 @@ BOOLEAN_FIELDS = {
     "sequence_learning",
     "ignored_suggestion_learning",
 }
-TEXT_FIELDS = {"ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id"}
+TEXT_FIELDS = {
+    "ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id", "terminal_mappings"
+}
 NUMBER_RANGES = {
     "suggestion_count": (1, 12, 1),
     "minimum_confidence": (0, 100, 1),
@@ -376,7 +379,18 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                     step_id=section,
                     data_schema=schema_for(SECTIONS[section], proposed),
                     errors={"presence_entities": "presence_required"},
-                )
+                    )
+            if section == "terminals":
+                from .terminal import parse_terminal_mappings
+
+                try:
+                    parse_terminal_mappings(proposed["terminal_mappings"])
+                except ValueError:
+                    return self.async_show_form(
+                        step_id=section,
+                        data_schema=schema_for(SECTIONS[section], proposed),
+                        errors={"terminal_mappings": "invalid_terminal_mappings"},
+                    )
             self._draft_options = proposed
             return await self.async_step_init()
         return self.async_show_form(
@@ -394,6 +408,9 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
 
     async def async_step_context(self, user_input=None):
         return await self._section("context", user_input)
+
+    async def async_step_terminals(self, user_input=None):
+        return await self._section("terminals", user_input)
 
     def _location_zones(self):
         self._ensure_draft()

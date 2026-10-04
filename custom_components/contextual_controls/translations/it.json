@@ -39,6 +39,7 @@
           "ai": "AI opzionale",
           "reset": "Reset apprendimento",
           "quick_access": "Accesso rapido / Apple",
+          "terminals": "Terminali fisici",
           "save": "Salva e chiudi",
           "adaptive": "Apprendimento adattivo",
           "adaptive_sources": "Pesi origini adattive",
@@ -223,6 +224,15 @@
           "quick_access_response": "Permette a Shortcuts di ricevere il risultato JSON di execute_slot.",
           "quick_access_track_usage": "Gli utilizzi riusciti alimentano lo stesso apprendimento del ranking.",
           "quick_access_usage_weight": "Imposta la confidence degli utilizzi Quick Access da 0 a 100."
+        }
+      },
+      "terminals": {
+        "title": "Terminali fisici",
+        "data": {
+          "terminal_mappings": "Mappature terminale-area"
+        },
+        "data_description": {
+          "terminal_mappings": "Coppie terminal_id:area_id separate da virgole, ad esempio cc_cucina:cucina,cc_soggiorno:soggiorno. Ogni terminale riceve le azioni ordinate per la propria area."
         }
       },
       "adaptive": {

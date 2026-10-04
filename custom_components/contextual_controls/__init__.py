@@ -163,6 +163,49 @@ async def async_setup(hass, config):
         ),
         supports_response=SupportsResponse.OPTIONAL,
     )
+
+    terminal_schema = vol.Schema(
+        {
+            vol.Optional("config_entry_id"): cv.string,
+            vol.Required("terminal"): cv.slug,
+            vol.Required("input"): vol.In(("select", "activate", "back")),
+            vol.Optional("slot"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+            vol.Optional("delta"): vol.All(vol.Coerce(int), vol.Range(min=-20, max=20)),
+            vol.Optional("revision"): cv.string,
+        }
+    )
+
+    async def terminal_input(call):
+        coordinator = coordinator_for(call)
+        return await coordinator.terminal_manager.async_input(
+            call.data["terminal"],
+            call.data["input"],
+            call.data.get("slot"),
+            call.data.get("delta"),
+            call.data.get("revision"),
+            call.context,
+        )
+
+    hass.services.async_register(
+        DOMAIN,
+        "terminal_input",
+        terminal_input,
+        schema=terminal_schema,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    async def refresh_terminal(call):
+        coordinator = coordinator_for(call)
+        await coordinator.terminal_manager.async_publish(call.data["terminal"])
+
+    hass.services.async_register(
+        DOMAIN,
+        "refresh_terminal",
+        refresh_terminal,
+        schema=vol.Schema(
+            {vol.Optional("config_entry_id"): cv.string, vol.Required("terminal"): cv.slug}
+        ),
+    )
     return True
 
 
@@ -182,6 +225,7 @@ async def async_setup_entry(hass, entry):
     entry.runtime_data = coordinator
     try:
         await coordinator.async_config_entry_first_refresh()
+        await coordinator.terminal_manager.async_configure()
         await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
     except Exception:
         await coordinator.async_close()
