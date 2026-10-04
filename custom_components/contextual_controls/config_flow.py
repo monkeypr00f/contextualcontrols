@@ -6,6 +6,7 @@ from copy import deepcopy
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, OptionsFlowWithReload
 from homeassistant.core import callback
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import selector
 
 from .const import (
@@ -58,7 +59,7 @@ SECTIONS = {
         "quick_access_track_usage",
         "quick_access_usage_weight",
     ),
-    "terminals": ("terminal_mappings",),
+    "terminals": (),
     "advanced": ("minimum_confidence", "cold_start", "debug"),
     "adaptive": (
         "adaptive_learning",
@@ -172,9 +173,7 @@ BOOLEAN_FIELDS = {
     "sequence_learning",
     "ignored_suggestion_learning",
 }
-TEXT_FIELDS = {
-    "ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id", "terminal_mappings"
-}
+TEXT_FIELDS = {"ollama_url", "ollama_model", "openai_endpoint", "openai_model", "user_id"}
 NUMBER_RANGES = {
     "suggestion_count": (1, 12, 1),
     "minimum_confidence": (0, 100, 1),
@@ -259,6 +258,26 @@ def schema_for(keys, options):
         marker = vol.Optional if key == "user_id" else vol.Required
         fields[marker(key, default=deepcopy(value))] = control
     return vol.Schema(fields)
+
+
+def terminal_schema(mappings: dict[str, str]) -> vol.Schema:
+    """Use native selectors instead of exposing the stored mapping syntax."""
+    fields: dict = {
+        vol.Optional("terminal_id"): selector.TextSelector(),
+        vol.Optional("terminal_area"): selector.AreaSelector(),
+    }
+    if mappings:
+        fields[vol.Optional("remove_terminal")] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=sorted(mappings), mode=selector.SelectSelectorMode.DROPDOWN
+            )
+        )
+    return vol.Schema(fields)
+
+
+def serialize_terminal_mappings(mappings: dict[str, str]) -> str:
+    """Persist mappings in the backward-compatible compact options format."""
+    return ",".join(f"{terminal}:{area}" for terminal, area in sorted(mappings.items()))
 
 
 def normalize(values):
@@ -379,7 +398,7 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                     step_id=section,
                     data_schema=schema_for(SECTIONS[section], proposed),
                     errors={"presence_entities": "presence_required"},
-                    )
+                )
             if section == "terminals":
                 from .terminal import parse_terminal_mappings
 
@@ -410,7 +429,58 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
         return await self._section("context", user_input)
 
     async def async_step_terminals(self, user_input=None):
-        return await self._section("terminals", user_input)
+        self._ensure_draft()
+        from .terminal import parse_terminal_mappings
+
+        options = self._draft_options
+        mappings = parse_terminal_mappings(options["terminal_mappings"])
+        if user_input is not None:
+            terminal_id = str(user_input.get("terminal_id", "")).strip()
+            area_id = user_input.get("terminal_area")
+            remove_terminal = user_input.get("remove_terminal")
+            errors = {}
+            if terminal_id or area_id:
+                if not terminal_id:
+                    errors["terminal_id"] = "terminal_id_required"
+                elif not area_id:
+                    errors["terminal_area"] = "terminal_area_required"
+                elif not terminal_id.replace("_", "").isalnum():
+                    errors["terminal_id"] = "invalid_terminal_id"
+                else:
+                    mappings[terminal_id] = area_id
+            if remove_terminal:
+                mappings.pop(remove_terminal, None)
+            if errors:
+                return self.async_show_form(
+                    step_id="terminals",
+                    data_schema=terminal_schema(mappings),
+                    errors=errors,
+                    description_placeholders={
+                        "configured_terminals": self._terminal_summary(mappings)
+                    },
+                )
+            self._draft_options = {
+                **options,
+                "terminal_mappings": serialize_terminal_mappings(mappings),
+            }
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="terminals",
+            data_schema=terminal_schema(mappings),
+            description_placeholders={"configured_terminals": self._terminal_summary(mappings)},
+        )
+
+    def _terminal_summary(self, mappings: dict[str, str]) -> str:
+        """Provide a friendly summary while the option flow remains open."""
+        if not mappings:
+            return "Nessun terminale configurato."
+        areas = ar.async_get(self.hass)
+        summary = []
+        for terminal, area_id in sorted(mappings.items()):
+            area = areas.async_get_area(area_id)
+            summary.append(f"{terminal} → {area.name if area else area_id}")
+        return ", ".join(summary)
 
     def _location_zones(self):
         self._ensure_draft()

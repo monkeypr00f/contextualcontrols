@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.10.0. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.10.1. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking

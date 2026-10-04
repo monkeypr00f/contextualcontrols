@@ -228,11 +228,16 @@
       },
       "terminals": {
         "title": "Terminali fisici",
+        "description": "Aggiungi o aggiorna un terminale alla volta. Scegli l'area Home Assistant dall'elenco; l'ID tecnico deve corrispondere al `terminal_id` impostato nel firmware ESPHome. Configurati: {configured_terminals}",
         "data": {
-          "terminal_mappings": "Mappature terminale-area"
+          "terminal_id": "ID del terminale",
+          "terminal_area": "Area",
+          "remove_terminal": "Rimuovi un terminale"
         },
         "data_description": {
-          "terminal_mappings": "Coppie terminal_id:area_id separate da virgole, ad esempio cc_cucina:cucina,cc_soggiorno:soggiorno. Ogni terminale riceve le azioni ordinate per la propria area."
+          "terminal_id": "L'ID nel firmware ESPHome, ad esempio cc_cucina.",
+          "terminal_area": "Il terminale riceve le azioni ordinate per quest'area.",
+          "remove_terminal": "Selezionalo solo quando vuoi rimuovere un terminale."
         }
       },
       "adaptive": {
@@ -359,7 +364,10 @@
       "entity_required": "Seleziona un’entità.",
       "invalid_location_id": "Usa solo lettere minuscole, numeri e underscore.",
       "duplicate_location_id": "Esiste già una zona con questo ID.",
-      "location_name_required": "Inserisci un nome per la zona."
+      "location_name_required": "Inserisci un nome per la zona.",
+      "terminal_id_required": "Inserisci l'ID del terminale.",
+      "terminal_area_required": "Scegli un'area per il terminale.",
+      "invalid_terminal_id": "L'ID del terminale può contenere solo lettere, numeri e trattini bassi."
     }
   },
   "entity": {
