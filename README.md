@@ -19,6 +19,11 @@ incorporata, installa la card prima di aggiornare l’integrazione a 0.5.0.
 
 ## Installazione manuale
 
+L'integrazione funziona senza hardware dedicato. Il firmware ESP32/LVGL e le
+istruzioni di cablaggio sono nel progetto indipendente `context-dial`, opzionale.
+Qui restano soltanto le [API per terminali fisici](docs/TERMINAL_API.md): chi
+usa esclusivamente Home Assistant e la dashboard non deve installare ESPHome.
+
 1. Copia la cartella `custom_components/contextual_controls` in
    `/config/custom_components/contextual_controls` del tuo Home Assistant.
    Copia l’intera cartella, incluse `translations` e `manifest.json`.
