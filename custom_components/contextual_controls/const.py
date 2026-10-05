@@ -1,7 +1,7 @@
 """Shared constants; no Home Assistant imports."""
 
 DOMAIN = "contextual_controls"
-VERSION = "0.10.5"
+VERSION = "0.10.6"
 NAME = "Contextual Controls"
 STORAGE_VERSION = 7
 MAX_RECORDS = 50_000

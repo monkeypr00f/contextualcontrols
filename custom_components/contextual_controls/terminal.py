@@ -282,8 +282,8 @@ class TerminalManager:
             kind = "NUMBER"
         label = str(state.attributes.get("friendly_name", entity_id))
         if kind in {"NUMBER", "CLIMATE", "MEDIA", "LIGHT"}:
-            value = self._value_label(domain, state.state, state.attributes)
-            label = f"{label}: {value}" if value else label
+            value_label = self._value_label(domain, state.state, state.attributes)
+            label = f"{label}: {value_label}" if value_label else label
         value, minimum, maximum, step, unit = self._control_values(
             domain, state.state, state.attributes
         )
@@ -327,11 +327,15 @@ class TerminalManager:
     ) -> tuple[float | str | None, float | None, float | None, float | None, str]:
         """Normalize value metadata without making device-specific assumptions."""
         if domain == "number":
+            minimum = attributes.get("min")
+            maximum = attributes.get("max")
+            if minimum is None or maximum is None:
+                return None, None, None, None, ""
             try:
                 return (
                     float(state),
-                    float(attributes.get("min")),
-                    float(attributes.get("max")),
+                    float(minimum),
+                    float(maximum),
                     float(attributes.get("step", 1)),
                     str(attributes.get("unit_of_measurement", "")),
                 )
