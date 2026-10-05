@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import json
 import sys
 from datetime import UTC, datetime
 from types import ModuleType, SimpleNamespace
@@ -17,6 +18,9 @@ def terminal(monkeypatch):
     registry = SimpleNamespace(async_get_area=lambda area: SimpleNamespace(name=area))
     helpers = ModuleType("homeassistant.helpers")
     helpers.area_registry = SimpleNamespace(async_get=lambda hass: registry)
+    helpers.entity_registry = SimpleNamespace(
+        async_get=lambda hass: SimpleNamespace(async_get=lambda entity: None)
+    )
     util = ModuleType("homeassistant.util")
     util.dt = SimpleNamespace(now=lambda: datetime.now(UTC), utcnow=lambda: datetime.now(UTC))
     for name, module in {
@@ -124,3 +128,107 @@ def test_native_light_activate_still_toggles_and_stale_input_is_rejected(dial):
     coordinator.async_execute_terminal_entity.assert_not_awaited()
     asyncio.run(manager.async_input("dial", "activate", 1, None, None, object()))
     coordinator.async_execute_terminal_entity.assert_awaited_once()
+
+
+def test_fixed_items_precede_suggestions_even_outside_assigned_areas(dial):
+    manager, coordinator, published = dial
+    coordinator.options["terminal_settings"] = {
+        "dial": {
+            "fixed_entities": ["light.bedroom", "switch.dining", "sensor.missing"],
+            "zone_name": "Salotto",
+            "terminal_name": "Dial vicino al divano",
+        }
+    }
+    asyncio.run(manager.async_configure())
+    payload = json.loads(published["sensor.contextual_controls_dial_data"][1]["payload"])
+    assert payload["title"] == "Salotto"
+    assert payload["terminal_name"] == "Dial vicino al divano"
+    assert [item["id"] for item in payload["items"]] == [
+        "light.bedroom",
+        "switch.dining",
+        "sensor.missing",
+        "light.sofa",
+        "light.kitchen",
+    ]
+    assert payload["items"][2]["supported"] is False
+    assert payload["items"][2]["state_text"] == "Non disponibile"
+    revision = payload["revision"]
+    asyncio.run(manager.async_publish("dial"))
+    assert (
+        json.loads(published["sensor.contextual_controls_dial_data"][1]["payload"])["revision"]
+        == revision
+    )
+
+
+def test_disabled_suggestions_unsupported_no_command_and_fixed_no_learning(dial):
+    manager, coordinator, published = dial
+    coordinator.options["terminal_settings"] = {
+        "dial": {
+            "fixed_entities": ["light.sofa", "sensor.missing"],
+            "contextual_enabled": False,
+        }
+    }
+    asyncio.run(manager.async_configure())
+    payload = json.loads(published["sensor.contextual_controls_dial_data"][1]["payload"])
+    assert len(payload["items"]) == 2
+    result = asyncio.run(manager.async_input("dial", "activate", 2, None, None, object()))
+    assert result["reason"] == "unsupported"
+    coordinator.async_execute_terminal_entity.assert_not_awaited()
+
+    async def scenario():
+        await manager.async_input("dial", "adjust", 1, None, None, object())
+        await manager.async_input("dial", "select", 1, 1, None, object())
+        await manager.async_input("dial", "activate", 1, None, None, object())
+
+    asyncio.run(scenario())
+    assert coordinator.async_adjust_terminal_slot.await_args.kwargs == {"fixed": True}
+    coordinator._async_track_terminal_usage.assert_not_awaited()
+    event = manager.hass.bus.async_fire.call_args.args[1]
+    assert event["source"] == "fixed"
+    assert event["terminal_id"] == "dial"
+    assert event["position"] == 1
+    assert "timestamp" in event
+
+
+def test_climate_preview_commit_bounds_and_cancel(dial):
+    manager, coordinator, _ = dial
+    old_get = manager.hass.states.get
+    climate = SimpleNamespace(
+        state="heat",
+        attributes={
+            "temperature": 21.5,
+            "current_temperature": 20,
+            "min_temp": 16,
+            "max_temp": 22,
+            "target_temp_step": 0.5,
+        },
+    )
+    manager.hass.states.get = lambda entity: (
+        climate if entity == "climate.test" else old_get(entity)
+    )
+    coordinator.options["terminal_settings"] = {
+        "dial": {
+            "fixed_entities": ["climate.test"],
+            "contextual_enabled": False,
+        }
+    }
+    asyncio.run(manager.async_configure())
+
+    async def scenario():
+        await manager.async_input("dial", "activate", 1, None, None, object())
+        await manager.async_input("dial", "select", 1, 20, None, object())
+        assert manager.sessions["dial"].pending_value == 22
+        coordinator.async_adjust_terminal_slot.assert_not_awaited()
+        await manager.async_input("dial", "back", 1, None, None, object())
+        coordinator.async_adjust_terminal_slot.assert_not_awaited()
+        await manager.async_input("dial", "activate", 1, None, None, object())
+        await manager.async_input("dial", "select", 1, -1, None, object())
+        await manager.async_input("dial", "activate", 1, None, None, object())
+
+    asyncio.run(scenario())
+    assert coordinator.async_adjust_terminal_slot.await_args.args[:2] == ("climate.test", 0)
+    assert coordinator.async_adjust_terminal_slot.await_args.kwargs == {
+        "fixed": True,
+        "value_override": 21.0,
+    }
+    coordinator._async_track_terminal_usage.assert_not_awaited()

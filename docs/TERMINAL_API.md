@@ -1,5 +1,10 @@
 # Optional physical terminal API
 
+Version 0.11.0 supersedes the five-item default described below with
+[configurable fixed + contextual items and atomic payload schema 2](CONFIGURABLE_TERMINAL.md).
+The service names and legacy sensors remain compatible; use that document for
+the new configuration, 20-item limit and KO/encoder interaction.
+
 Contextual Controls runs without any physical terminal. No ESPHome firmware,
 ESP32 dependency or hardware installation is included in this repository.
 

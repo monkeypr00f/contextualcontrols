@@ -5,7 +5,11 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.10.6. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.11.0. Richiede
+**Home Assistant Core 2026.9.3 o successivo**.
+Il [Context Dial configurabile](docs/CONFIGURABLE_TERMINAL.md) aggiunge entità
+fisse ordinate, suggerimenti opzionali e payload LVGL schema 2. Il firmware
+rimane nel repository separato e non è necessario per usare l'integrazione.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking

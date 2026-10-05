@@ -260,20 +260,47 @@ def schema_for(keys, options):
     return vol.Schema(fields)
 
 
-def terminal_schema(mappings: dict[str, tuple[str, ...]]) -> vol.Schema:
-    """Use native selectors instead of exposing the stored mapping syntax."""
+def terminal_schema(
+    mappings: dict[str, tuple[str, ...]], profile: dict | None = None
+) -> vol.Schema:
+    """Native entity picker permits every domain and preserves user order."""
+    from .terminal_models import PROFILE_DEFAULTS
+
+    defaults = {**PROFILE_DEFAULTS, **(profile or {})}
     fields: dict = {
-        vol.Optional("terminal_id"): selector.TextSelector(),
-        vol.Optional("terminal_areas"): selector.AreaSelector(
-            selector.AreaSelectorConfig(multiple=True)
+        vol.Optional(
+            "terminal_id", default=defaults.get("terminal_id", "")
+        ): selector.TextSelector(),
+        vol.Optional(
+            "terminal_areas", default=defaults.get("terminal_areas", [])
+        ): selector.AreaSelector(selector.AreaSelectorConfig(multiple=True)),
+        vol.Optional("terminal_name", default=defaults["terminal_name"]): selector.TextSelector(),
+        vol.Optional("zone_name", default=defaults["zone_name"]): selector.TextSelector(),
+        vol.Optional("fixed_entities", default=defaults["fixed_entities"]): selector.EntitySelector(
+            selector.EntitySelectorConfig(multiple=True, reorder=True)
         ),
+        vol.Optional(
+            "contextual_enabled", default=defaults["contextual_enabled"]
+        ): selector.BooleanSelector(),
     }
+    for key, minimum, maximum in (
+        ("contextual_max_items", 0, 12),
+        ("dim_timeout", 5, 3600),
+        ("off_timeout", 10, 7200),
+    ):
+        fields[vol.Optional(key, default=defaults[key])] = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=minimum, max=maximum, step=1, mode=selector.NumberSelectorMode.BOX
+            )
+        )
     if mappings:
-        fields[vol.Optional("remove_terminal")] = selector.SelectSelector(
+        control = selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=sorted(mappings), mode=selector.SelectSelectorMode.DROPDOWN
             )
         )
+        fields[vol.Optional("edit_terminal")] = control
+        fields[vol.Optional("remove_terminal")] = control
     return vol.Schema(fields)
 
 
@@ -435,9 +462,29 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
     async def async_step_terminals(self, user_input=None):
         self._ensure_draft()
         from .terminal import parse_terminal_mappings
+        from .terminal_models import normalize_profile
 
         options = self._draft_options
         mappings = parse_terminal_mappings(options["terminal_mappings"])
+        profiles = deepcopy(options.get("terminal_settings", {}))
+        if (
+            user_input is not None
+            and user_input.get("edit_terminal")
+            and not user_input.get("terminal_id")
+        ):
+            terminal_id = user_input["edit_terminal"]
+            return self.async_show_form(
+                step_id="terminals",
+                data_schema=terminal_schema(
+                    mappings,
+                    {
+                        **profiles.get(terminal_id, {}),
+                        "terminal_id": terminal_id,
+                        "terminal_areas": list(mappings[terminal_id]),
+                    },
+                ),
+                description_placeholders={"configured_terminals": self._terminal_summary(mappings)},
+            )
         if user_input is not None:
             terminal_id = str(user_input.get("terminal_id", "")).strip()
             raw_area_ids = user_input.get("terminal_areas", [])
@@ -452,13 +499,18 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
                 elif not terminal_id.replace("_", "").isalnum():
                     errors["terminal_id"] = "invalid_terminal_id"
                 else:
-                    mappings[terminal_id] = area_ids
+                    try:
+                        profiles[terminal_id] = normalize_profile(user_input)
+                        mappings[terminal_id] = area_ids
+                    except ValueError, TypeError:
+                        errors["base"] = "invalid_terminal_settings"
             if remove_terminal:
                 mappings.pop(remove_terminal, None)
+                profiles.pop(remove_terminal, None)
             if errors:
                 return self.async_show_form(
                     step_id="terminals",
-                    data_schema=terminal_schema(mappings),
+                    data_schema=terminal_schema(mappings, user_input),
                     errors=errors,
                     description_placeholders={
                         "configured_terminals": self._terminal_summary(mappings)
@@ -467,6 +519,7 @@ class ContextualOptionsFlow(OptionsFlowWithReload):
             self._draft_options = {
                 **options,
                 "terminal_mappings": serialize_terminal_mappings(mappings),
+                "terminal_settings": profiles,
             }
             return await self.async_step_init()
 

@@ -169,7 +169,7 @@ async def async_setup(hass, config):
             vol.Optional("config_entry_id"): cv.string,
             vol.Required("terminal"): cv.slug,
             vol.Required("input"): vol.In(("select", "activate", "adjust", "back")),
-            vol.Optional("slot"): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+            vol.Optional("slot"): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
             vol.Optional("delta"): vol.All(vol.Coerce(int), vol.Range(min=-20, max=20)),
             vol.Optional("revision"): cv.string,
         }

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+import json
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import Context, HomeAssistant
@@ -10,11 +12,13 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.util import dt as dt_util
 
 from .quick_access import DEFAULT_ICONS, SlotManager
+from .terminal_icons import default_icon, icon_glyph
+from .terminal_models import MAX_ITEMS, compose_items, normalize_profile, state_text
 
 if TYPE_CHECKING:
     from .coordinator import ContextualCoordinator
 
-MAX_TERMINAL_ACTIONS = 5
+MAX_TERMINAL_ACTIONS = MAX_ITEMS
 EVENT_TERMINAL_INPUT = "contextual_controls_terminal_input"
 
 
@@ -53,82 +57,130 @@ class TerminalSession:
     active_slot: int | None = None
     feedback: str = "ready"
     adjusted_action: str | None = None
+    profile: dict[str, Any] = field(default_factory=lambda: normalize_profile({}))
+    pending_value: float | None = None
+    initial_value: Any = None
 
 
 class TerminalManager:
-    """Publish a five-row projection; execute only coordinator-owned slots."""
+    """Project configurable fixed controls plus the existing ranked suggestions."""
 
     def __init__(self, hass: HomeAssistant, coordinator: ContextualCoordinator) -> None:
-        self.hass = hass
-        self.coordinator = coordinator
+        self.hass, self.coordinator = hass, coordinator
         self.sessions: dict[str, TerminalSession] = {}
+        # Do not accept cached slot revisions after an integration restart.
+        self._generation = int(dt_util.utcnow().timestamp() * 1_000_000)
 
     async def async_configure(self) -> None:
+        # Load the bundled MDI map outside HA's event loop, once per process.
+        await asyncio.to_thread(icon_glyph, "mdi:help-circle")
         mappings = parse_terminal_mappings(self.coordinator.options["terminal_mappings"])
         old = self.sessions
         self.sessions = {}
-        for terminal_id, area_ids in mappings.items():
-            existing = old.get(terminal_id)
-            if existing is not None and existing.area_ids == area_ids:
-                self.sessions[terminal_id] = existing
-                continue
-            self.sessions[terminal_id] = TerminalSession(
-                terminal_id,
-                area_ids,
-                SlotManager(
-                    MAX_TERMINAL_ACTIONS,
-                    int(self.coordinator.options["quick_access_stability"]),
-                ),
+        for terminal_id, areas in mappings.items():
+            profile = normalize_profile(
+                self.coordinator.options.get("terminal_settings", {}).get(terminal_id, {})
             )
+            existing = old.get(terminal_id)
+            if existing and existing.area_ids == areas and existing.profile == profile:
+                self.sessions[terminal_id] = existing
+            else:
+                self.sessions[terminal_id] = TerminalSession(
+                    terminal_id,
+                    areas,
+                    SlotManager(MAX_ITEMS, int(self.coordinator.options["quick_access_stability"])),
+                    profile=profile,
+                )
         await self.async_publish_all()
 
+    def is_fixed(self, entity_id: str) -> bool:
+        return any(entity_id in s.profile["fixed_entities"] for s in self.sessions.values())
+
     async def async_publish_all(self) -> None:
-        for terminal_id in self.sessions:
+        for terminal_id in tuple(self.sessions):
             await self.async_publish(terminal_id)
 
     async def async_publish(self, terminal_id: str) -> None:
         session = self._session(terminal_id)
-        now = dt_util.now()
-        rows = [
+        fixed = session.profile["fixed_entities"]
+        dynamic = [
             row
             for row in self.coordinator.terminal_rows
             if self.coordinator.areas.get(row["entity_id"]) in session.area_ids
         ]
-        # Do not replace the target under an editing user when ranking changes.
+        by_id = {row["entity_id"]: row for row in dynamic}
+        count = (
+            session.profile["contextual_max_items"] if session.profile["contextual_enabled"] else 0
+        )
+        pairs = compose_items(fixed, [row["entity_id"] for row in dynamic], count)
+        rows = [
+            {**by_id.get(entity, {}), "entity_id": entity, "source": source}
+            for entity, source in pairs
+        ]
         if session.mode != "adjust":
-            session.slots.update(rows, now, self.coordinator._quick_target_valid)
+            changed = session.slots.update(
+                rows,
+                dt_util.now(),
+                lambda entity: entity in fixed or self.coordinator._quick_target_valid(entity),
+            )
+            if changed:
+                self._generation += 1
+                session.slots.generation = self._generation
         registry = ar.async_get(self.hass)
-        title = " · ".join(
+        title = session.profile["zone_name"] or " · ".join(
             area.name
             if (area := registry.async_get_area(area_id))
             else area_id.replace("_", " ").title()
             for area_id in session.area_ids
         )
         prefix = f"sensor.contextual_controls_{terminal_id}"
-        self.hass.states.async_set(f"{prefix}_title", title, {"terminal": terminal_id})
+        items = []
+        for index in range(1, MAX_ITEMS + 1):
+            detail = self._slot_detail(session, index)
+            # Legacy action sensors remain available to older clients.
+            self.hass.states.async_set(
+                f"{prefix}_action_{index}", detail.get("label", "")[:255], detail
+            )
+            if session.slots.get(index):
+                items.append(detail)
+        for key, value in {
+            "title": title,
+            "status": f"{len(items)} controlli disponibili",
+            "mode": session.mode,
+            "feedback": session.feedback,
+            "revision": str(session.slots.generation),
+        }.items():
+            self.hass.states.async_set(
+                f"{prefix}_{key}",
+                value,
+                {
+                    "terminal": terminal_id,
+                    "area_id": session.area_ids[0],
+                    "area_ids": list(session.area_ids),
+                },
+            )
+        payload = {
+            "schema": 2,
+            "terminal_id": terminal_id,
+            "title": title,
+            "terminal_name": session.profile["terminal_name"] or terminal_id,
+            "revision": str(session.slots.generation),
+            "area_ids": list(session.area_ids),
+            "mode": session.mode,
+            "active_slot": session.active_slot,
+            "pending_value": session.pending_value,
+            "feedback": session.feedback,
+            "dim_timeout": session.profile["dim_timeout"],
+            "off_timeout": session.profile["off_timeout"],
+            "items": items,
+        }
         self.hass.states.async_set(
-            f"{prefix}_status",
-            f"{sum(item is not None for item in session.slots.slots)} controlli disponibili"
-            if any(session.slots.slots)
-            else "Nessuna azione disponibile",
+            f"{prefix}_data",
+            str(session.slots.generation),
             {
-                "terminal": terminal_id,
-                "area_id": session.area_ids[0],
-                "area_ids": list(session.area_ids),
+                "payload": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             },
         )
-        self.hass.states.async_set(f"{prefix}_mode", session.mode, {"terminal": terminal_id})
-        # This is deliberately a separate state rather than an attribute: ESPHome's
-        # Home Assistant text sensor consumes states, not arbitrary attributes.
-        self.hass.states.async_set(
-            f"{prefix}_feedback", session.feedback, {"terminal": terminal_id}
-        )
-        self.hass.states.async_set(
-            f"{prefix}_revision", str(session.slots.generation), {"terminal": terminal_id}
-        )
-        for slot in range(1, MAX_TERMINAL_ACTIONS + 1):
-            detail = self._slot_detail(session, slot)
-            self.hass.states.async_set(f"{prefix}_action_{slot}", detail.get("label", ""), detail)
 
     async def async_input(
         self,
@@ -145,107 +197,123 @@ class TerminalManager:
             await self.async_publish(terminal_id)
             return {"success": False, "reason": "stale_revision"}
         if input_name == "back":
-            if session.adjusted_action and session.active_slot is not None:
-                await self._track_adjustment(session, context)
+            await self._track_adjustment(session, context)
+            session.mode, session.active_slot, session.pending_value = "menu", None, None
             session.feedback = "ready"
-            if session.mode == "adjust":
-                session.mode, session.active_slot = "menu", None
             await self.async_publish(terminal_id)
-            return {"success": True, "mode": session.mode}
-        if slot is None or not 1 <= slot <= MAX_TERMINAL_ACTIONS:
+            return {"success": True, "mode": "menu"}
+        selected = session.active_slot if session.mode == "adjust" else slot
+        if selected is None or not 1 <= selected <= MAX_ITEMS:
             return {"success": False, "reason": "invalid_slot"}
-        selected = (
-            session.active_slot
-            if session.mode == "adjust" and session.active_slot is not None
-            else slot
-        )
         detail = self._slot_detail(session, selected)
-        if not detail.get("available"):
-            session.feedback = "empty"
+        if not detail.get("available") or not detail.get("supported"):
+            session.feedback = "unsupported" if not detail.get("supported") else "unavailable"
             await self.async_publish(terminal_id)
-            return {"success": False, "reason": "empty_slot"}
-        if input_name == "select" and session.mode == "adjust":
-            result = await self.coordinator.async_adjust_terminal_slot(
-                detail["entity_id"], delta or 0, context
+            return {"success": False, "reason": session.feedback}
+        fixed = detail["source"] == "fixed"
+        kwargs = {"fixed": True} if fixed else {}
+        if input_name == "select" and session.mode != "adjust":
+            await self._emit(session, "select", selected, detail, {"success": True})
+            return {"success": True}
+        if input_name == "select":
+            if detail["domain"] == "climate":
+                if session.pending_value is None:
+                    return {"success": False, "reason": "invalid_value"}
+                detail = {**detail, "value": session.pending_value}
+                proposed = session.pending_value + (delta or 0) * detail["step"]
+                session.pending_value = round(max(detail["min"], min(detail["max"], proposed)), 3)
+                result = {"success": True, "value": session.pending_value, "pending": True}
+            else:
+                result = await self.coordinator.async_adjust_terminal_slot(
+                    detail["entity_id"], delta or 0, context, **kwargs
+                )
+                if result.get("success"):
+                    session.adjusted_action = result.get("action")
+            await self._emit(
+                session, "preview" if result.get("pending") else "adjust", selected, detail, result
             )
-            if result.get("success"):
-                session.adjusted_action = result.get("action", "adjust")
-            await self._emit(terminal_id, session, "adjust", selected, detail, result)
-            # A successful tick is still an editing operation, not a completed
-            # command. Keep the dial on its value-control view until press.
             session.feedback = (
                 "adjust" if result.get("success") else str(result.get("reason", "error"))
             )
             await self.async_publish(terminal_id)
             return result
-        if input_name == "adjust" and detail["kind"] == "LIGHT":
-            session.mode, session.active_slot = "adjust", selected
-            session.adjusted_action = None
-            session.feedback = "adjust"
-            await self._emit(
-                terminal_id, session, "enter_adjust", selected, detail, {"success": True}
-            )
-            await self.async_publish(terminal_id)
-            return {"success": True, "mode": session.mode}
-        if input_name == "activate" and (
-            detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}
-            or (detail["kind"] == "LIGHT" and session.mode == "adjust")
+        if session.mode == "adjust" and input_name == "activate":
+            result = {"success": True}
+            if detail["domain"] == "climate" and session.pending_value is not None:
+                result = await self.coordinator.async_adjust_terminal_slot(
+                    detail["entity_id"], 0, context, value_override=session.pending_value, **kwargs
+                )
+                if result.get("success"):
+                    session.adjusted_action = result.get("action")
+                else:
+                    session.feedback = str(result.get("reason", "error"))
+                    await self.async_publish(terminal_id)
+                    return result
+            await self._emit(session, "confirm", selected, detail, result)
+            await self._track_adjustment(session, context)
+            session.mode, session.active_slot, session.pending_value = "menu", None, None
+            session.feedback = "ok"
+        elif input_name == "adjust" or (
+            input_name == "activate" and detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}
         ):
-            if session.mode == "adjust":
-                await self._track_adjustment(session, context)
-                session.mode, session.active_slot = "menu", None
-                await self._emit(
-                    terminal_id, session, "confirm", selected, detail, {"success": True}
-                )
-                session.feedback = "ok"
-            else:
-                session.mode, session.active_slot = "adjust", selected
-                session.adjusted_action = None
-                await self._emit(
-                    terminal_id, session, "enter_adjust", selected, detail, {"success": True}
-                )
-                session.feedback = "adjust"
+            if detail["kind"] not in {"LIGHT", "NUMBER", "CLIMATE", "MEDIA"}:
+                return {"success": False, "reason": "unsupported_action"}
+            session.mode, session.active_slot = "adjust", selected
+            session.adjusted_action, session.initial_value = None, detail["value"]
+            session.pending_value = (
+                float(detail["value"]) if detail["domain"] == "climate" else None
+            )
+            session.feedback = "adjust"
+            await self._emit(session, "enter_adjust", selected, detail, {"success": True})
+        elif input_name == "activate":
+            session.feedback = "loading"
             await self.async_publish(terminal_id)
-            return {"success": True, "mode": session.mode}
-        if input_name != "activate":
-            result = {"success": True, "reason": "selection_recorded"}
-            await self._emit(terminal_id, session, "select", selected, detail, result)
+            result = await self.coordinator.async_execute_terminal_entity(
+                detail["entity_id"], selected, context, **kwargs
+            )
+            await self._emit(session, "activate", selected, detail, result)
+            session.feedback = "ok" if result.get("success") else str(result.get("reason", "error"))
+            await self.async_publish(terminal_id)
             return result
-        # Ensure repeated successes produce distinct HA state transitions so
-        # the Dial never waits forever for a second identical "ok" response.
-        session.feedback = "loading"
+        else:
+            return {"success": False, "reason": "invalid_input"}
         await self.async_publish(terminal_id)
-        result = await self.coordinator.async_execute_terminal_entity(
-            detail["entity_id"], selected, context
-        )
-        await self._emit(terminal_id, session, "activate", selected, detail, result)
-        session.feedback = "ok" if result.get("success") else str(result.get("reason", "error"))
-        await self.async_publish(terminal_id)
-        return result
+        return {"success": True, "mode": session.mode}
 
     async def _track_adjustment(self, session: TerminalSession, context: Context) -> None:
         if session.adjusted_action and session.active_slot is not None:
             snapshot = session.slots.get(session.active_slot)
-            if snapshot is not None:
+            if snapshot and snapshot.source != "fixed":
                 await self.coordinator._async_track_terminal_usage(
                     snapshot.entity_id, session.adjusted_action, session.active_slot, context
                 )
-            session.adjusted_action = None
+        session.adjusted_action = None
 
     async def _emit(
         self,
-        terminal_id: str,
         session: TerminalSession,
         input_name: str,
         selected: int,
         detail: dict[str, Any],
         result: dict[str, Any],
     ) -> None:
+        observed = self.hass.states.get(detail["entity_id"])
+        new_value = result.get("value")
+        if isinstance(new_value, (int, float)):
+            if detail["domain"] == "light":
+                new_value = round(new_value * 100 / 255)
+            elif detail["domain"] == "media_player":
+                new_value = round(new_value * 100)
+        elif observed is not None and result.get("success"):
+            new_value = self._control_values(detail["domain"], observed.state, observed.attributes)[
+                0
+            ]
         self.hass.bus.async_fire(
             EVENT_TERMINAL_INPUT,
             {
                 "timestamp": dt_util.utcnow().isoformat(),
-                "terminal": terminal_id,
+                "terminal": session.terminal_id,
+                "terminal_id": session.terminal_id,
                 "area_id": session.area_ids[0],
                 "area_ids": list(session.area_ids),
                 "input": input_name,
@@ -254,9 +322,15 @@ class TerminalManager:
                 "mode": session.mode,
                 "revision": session.slots.generation,
                 "action_id": detail["entity_id"],
-                "available_action_ids": [
-                    item.entity_id for item in session.slots.slots if item is not None
-                ],
+                "source": detail["source"],
+                "previous_value": detail["value"],
+                "new_value": new_value,
+                "initial_value": session.initial_value if session.mode == "adjust" else None,
+                "unit": detail["unit"],
+                "previous_state": detail["state"],
+                "new_state": observed.state if observed is not None else None,
+                "action": result.get("action", input_name),
+                "available_action_ids": [s.entity_id for s in session.slots.slots if s],
                 "success": bool(result.get("success")),
             },
         )
@@ -264,47 +338,86 @@ class TerminalManager:
     def _slot_detail(self, session: TerminalSession, slot: int) -> dict[str, Any]:
         snapshot = session.slots.get(slot)
         if snapshot is None:
-            return {"slot": slot, "available": False, "label": ""}
-        entity_id = snapshot.entity_id
-        state = self.hass.states.get(entity_id)
-        if state is None or not self.coordinator._quick_target_valid(entity_id):
-            return {"slot": slot, "available": False, "label": ""}
-        domain = entity_id.partition(".")[0]
-        kind = {"number": "NUMBER", "climate": "CLIMATE", "media_player": "MEDIA"}.get(
-            domain,
-            "TOGGLE" if domain in {"light", "switch", "fan", "input_boolean"} else "ACTION",
-        )
-        # A dimmer/position is a value control; a simple light remains a
-        # toggle. This keeps the projected type truthful to actual capability.
-        if domain == "light" and self._light_supports_brightness(state.attributes):
-            kind = "LIGHT"
-        elif domain == "cover" and isinstance(state.attributes.get("current_position"), int):
+            return {"slot": slot, "available": False, "supported": False, "label": ""}
+        entity = snapshot.entity_id
+        domain = entity.partition(".")[0]
+        state = self.hass.states.get(entity)
+        attrs = dict(state.attributes) if state else {}
+        if domain == "climate" and "temperature_unit" not in attrs:
+            units = getattr(getattr(self.hass, "config", None), "units", None)
+            attrs["temperature_unit"] = getattr(units, "temperature_unit", "°C")
+        raw = state.state if state else "unavailable"
+        fixed = snapshot.source == "fixed"
+        supported = domain in {
+            "light",
+            "climate",
+            "switch",
+            "number",
+            "media_player",
+            "cover",
+            "scene",
+            "script",
+            "button",
+            "input_button",
+            "input_boolean",
+            "fan",
+        }
+        if fixed and domain in {"fan"}:
+            supported = False  # Display only until an explicit fan adapter is added.
+        kind = {
+            "climate": "CLIMATE",
+            "number": "NUMBER",
+            "media_player": "MEDIA",
+            "switch": "TOGGLE",
+            "input_boolean": "TOGGLE",
+        }.get(domain, "ACTION")
+        if domain == "light":
+            kind = "LIGHT" if self._light_supports_brightness(attrs) else "TOGGLE"
+        if domain == "cover" and isinstance(attrs.get("current_position"), int):
             kind = "NUMBER"
-        label = str(state.attributes.get("friendly_name", entity_id))
-        if kind in {"NUMBER", "CLIMATE", "MEDIA", "LIGHT"}:
-            value_label = self._value_label(domain, state.state, state.attributes)
-            label = f"{label}: {value_label}" if value_label else label
-        value, minimum, maximum, step, unit = self._control_values(
-            domain, state.state, state.attributes
+        value, minimum, maximum, step, unit = self._control_values(domain, raw, attrs)
+        if kind == "CLIMATE" and not isinstance(value, (int, float)):
+            supported = False
+        icon = attrs.get("icon")
+        from homeassistant.helpers import entity_registry as er
+
+        entry = er.async_get(self.hass).async_get(entity)
+        if entry and entry.icon:
+            icon = entry.icon
+        icon = (
+            icon
+            or default_icon(domain, attrs.get("device_class"))
+            or DEFAULT_ICONS.get(domain, "mdi:help-circle")
         )
+        name = str(attrs.get("friendly_name", entity))[:160]
+        language = getattr(getattr(self.hass, "config", None), "language", "it")
+        text = state_text(domain, raw, attrs, language)
         return {
             "slot": slot,
-            "available": True,
-            "entity_id": entity_id,
-            "label": label,
-            "kind": kind,
-            "icon": state.attributes.get("icon") or DEFAULT_ICONS.get(domain),
-            "state": state.state,
-            "score": snapshot.score,
-            "rank_reason": snapshot.reason,
-            # A complete projection lets non-ESPHome clients render native
-            # controls too. The Dial itself needs only label/kind; HA remains
-            # authoritative for all limits and the actual adjustment.
+            "id": entity,
+            "entity_id": entity,
+            "source": "fixed" if fixed else "contextual",
+            "domain": domain,
+            "name": name,
+            "label": name + ": " + self._value_label(domain, raw, attrs),
+            "icon": icon,
+            "icon_glyph": icon_glyph(icon),
+            "kind": kind if supported else "UNSUPPORTED",
+            "state": raw,
+            "state_text": text,
+            "supported": supported,
+            "available": state is not None
+            and raw != "unavailable"
+            and (raw != "unknown" or domain in {"scene", "button", "input_button"}),
             "value": value,
             "min": minimum,
             "max": maximum,
             "step": step,
             "unit": unit,
+            "current_temperature": attrs.get("current_temperature"),
+            "hvac_action": attrs.get("hvac_action"),
+            "score": snapshot.score,
+            "rank_reason": snapshot.reason,
         }
 
     @staticmethod

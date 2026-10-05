@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -228,6 +229,16 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def _state(self, event: Event) -> None:
         entity_id = event.data["entity_id"]
+        # A terminal may display any sensor, including our own projections.
+        # Do not let publishing the projection recursively republish itself.
+        if entity_id.startswith("sensor.contextual_controls_"):
+            return
+        if self.terminal_manager.is_fixed(entity_id) or any(
+            snapshot and snapshot.entity_id == entity_id
+            for session in self.terminal_manager.sessions.values()
+            for snapshot in session.slots.slots
+        ):
+            self.hass.async_create_task(self.terminal_manager.async_publish_all())
         if event.data.get("old_state") is None or event.data.get("new_state") is None:
             # Index updates only for supported domains; sensor writes don't loop.
             if entity_id.partition(".")[0] in ACTIONS:
@@ -540,7 +551,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else "error"
                 )
             selected = compose(ranked, candidates, self.options)
-        # Physical terminals select their own area(s) before limiting to five.
+        # Physical terminals select their own area(s) before their configured limit.
         # Retain the full policy-approved order instead of filtering the already
         # truncated dashboard result; scoring itself is not duplicated.
         terminal_selected = (
@@ -891,11 +902,11 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
     async def async_execute_terminal_entity(
-        self, entity_id: str, slot: int, context: Context
+        self, entity_id: str, slot: int, context: Context, *, fixed: bool = False
     ) -> dict[str, Any]:
         """Execute an entity from a terminal-owned stable slot using existing safety/learning."""
         async with self._quick_access_lock:
-            if not self._quick_target_valid(entity_id):
+            if not self._terminal_target_valid(entity_id, fixed):
                 return {"entity_id": entity_id, "success": False, "reason": "unavailable_target"}
             rejection = safety_rejection(
                 entity_id,
@@ -932,15 +943,24 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     return {"entity_id": entity_id, "success": False, "reason": "service_error"}
             finally:
                 self._quick_access_contexts.discard(context.id)
-            await self._async_track_terminal_usage(entity_id, action.name, slot, context)
+            if not fixed:
+                await self._async_track_terminal_usage(entity_id, action.name, slot, context)
             self.quick_access_executions += 1
             return {"entity_id": entity_id, "action": action.name, "success": True}
 
     async def async_adjust_terminal_slot(
-        self, entity_id: str, delta: int, context: Context
+        self,
+        entity_id: str,
+        delta: int,
+        context: Context,
+        *,
+        fixed: bool = False,
+        value_override: float | None = None,
     ) -> dict[str, Any]:
         """Adjust only explicit number, climate or media controls from terminal mode."""
-        if not delta or not self._quick_target_valid(entity_id):
+        if (not delta and value_override is None) or not self._terminal_target_valid(
+            entity_id, fixed
+        ):
             return {"entity_id": entity_id, "success": False, "reason": "unavailable_target"}
         state = self.hass.states.get(entity_id)
         assert state is not None
@@ -960,7 +980,12 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             current = state.attributes.get("temperature")
             if not isinstance(current, (int, float)):
                 return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
-            value = float(current) + delta * float(state.attributes.get("target_temp_step", 0.5))
+            step = float(state.attributes.get("target_temp_step", 0.5))
+            value = value_override if value_override is not None else float(current) + delta * step
+            if step <= 0 or not math.isfinite(step) or not math.isfinite(value):
+                return {"entity_id": entity_id, "success": False, "reason": "invalid_value"}
+            minimum = float(state.attributes.get("min_temp", value))
+            value = minimum + round((value - minimum) / step) * step
             value = max(
                 float(state.attributes.get("min_temp", value)),
                 min(value, float(state.attributes.get("max_temp", value))),
@@ -1001,6 +1026,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if rejection:
             return {"entity_id": entity_id, "success": False, "reason": rejection}
         try:
+            self._quick_access_contexts.add(context.id)
             await self.hass.services.async_call(
                 action_domain,
                 action_name,
@@ -1010,7 +1036,26 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         except HomeAssistantError:
             return {"entity_id": entity_id, "success": False, "reason": "service_error"}
+        finally:
+            self._quick_access_contexts.discard(context.id)
         return {"entity_id": entity_id, "action": action_name, "value": value, "success": True}
+
+    def _terminal_target_valid(self, entity_id: str, fixed: bool) -> bool:
+        if not fixed:
+            return self._quick_target_valid(entity_id)
+        state = self.hass.states.get(entity_id)
+        return (
+            self.terminal_manager.is_fixed(entity_id)
+            and state is not None
+            and state.state != "unavailable"
+            and (
+                state.state != "unknown"
+                or entity_id.partition(".")[0] in {"scene", "button", "input_button"}
+            )
+            and entity_id not in self.options["excluded_entities"]
+            and entity_id.partition(".")[0] not in self.options["excluded_domains"]
+            and self.areas.get(entity_id) not in self.options["excluded_areas"]
+        )
 
     async def _async_track_terminal_usage(
         self, entity_id: str, action_name: str, slot: int, context: Context
