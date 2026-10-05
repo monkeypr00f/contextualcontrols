@@ -93,6 +93,139 @@ class RuntimeCheck(unittest.IsolatedAsyncioTestCase):
             await future.async_load(dt_util.utcnow())
         self.assertEqual(json.loads(await asyncio.to_thread(path.read_text))["version"], 999)
 
+    async def test_configurable_terminal_native_flow_and_services(self):
+        """Only simulated services: no real HA installation or device is touched."""
+        area = area_registry.async_get(self.hass).async_create("Salotto")
+        self.hass.states.async_set(
+            "sensor.fixed_temperature",
+            "20.5",
+            {
+                "friendly_name": "Sensore fisso",
+                "device_class": "temperature",
+            },
+        )
+        self.hass.states.async_set(
+            "light.fixed_dial",
+            "on",
+            {
+                "friendly_name": "Luce salotto",
+                "brightness": 128,
+                "supported_color_modes": ["brightness"],
+                "icon": "mdi:ceiling-light",
+            },
+        )
+        self.hass.states.async_set(
+            "climate.fixed_dial",
+            "heat",
+            {
+                "friendly_name": "Termostato",
+                "temperature": 21.5,
+                "current_temperature": 20,
+                "min_temp": 16,
+                "max_temp": 25,
+                "target_temp_step": 0.5,
+            },
+        )
+
+        async def dummy(call):
+            self.calls.append(call)
+
+        self.hass.services.async_register("light", "toggle", dummy)
+        self.hass.services.async_register("climate", "set_temperature", dummy)
+        flow = await self.hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        flow = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"name": "Dial test"}
+        )
+        result = await self.hass.config_entries.flow.async_configure(
+            flow["flow_id"],
+            {
+                "included_domains": ["light"],
+                "included_entities": [],
+                "excluded_entities": [],
+            },
+        )
+        entry = result["result"]
+        await self.hass.async_block_till_done()
+        options = await self.hass.config_entries.options.async_init(entry.entry_id)
+        options = await self.hass.config_entries.options.async_configure(
+            options["flow_id"], {"next_step_id": "terminals"}
+        )
+        fields = {str(key): value for key, value in options["data_schema"].schema.items()}
+        self.assertTrue(fields["fixed_entities"].config["reorder"])
+        self.assertNotIn("filter", fields["fixed_entities"].config)
+        options = await self.hass.config_entries.options.async_configure(
+            options["flow_id"],
+            {
+                "terminal_id": "dial",
+                "terminal_areas": [area.id],
+                "terminal_name": "Dial divano",
+                "fixed_entities": [
+                    "light.fixed_dial",
+                    "climate.fixed_dial",
+                    "sensor.fixed_temperature",
+                ],
+                "contextual_enabled": False,
+            },
+        )
+        await self.hass.config_entries.options.async_configure(
+            options["flow_id"], {"next_step_id": "save"}
+        )
+        await self.hass.async_block_till_done()
+        self.assertEqual(entry.state, config_entries.ConfigEntryState.LOADED)
+        coordinator = entry.runtime_data
+        sensor = self.hass.states.get("sensor.contextual_controls_dial_data")
+        payload = json.loads(sensor.attributes["payload"])
+        self.assertEqual(payload["title"], "Salotto")
+        self.assertEqual([item["source"] for item in payload["items"]], ["fixed"] * 3)
+        self.assertEqual(payload["items"][0]["icon"], "mdi:ceiling-light")
+        revision = payload["revision"]
+        self.hass.states.async_set(
+            "light.fixed_dial",
+            "on",
+            {
+                "brightness": 166,
+                "supported_color_modes": ["brightness"],
+            },
+        )
+        await self.hass.async_block_till_done()
+        payload = json.loads(self.hass.states.get(sensor.entity_id).attributes["payload"])
+        self.assertEqual(payload["revision"], revision)
+        self.assertEqual(payload["items"][0]["state_text"], "Accesa · 65%")
+
+        async def command(input_name, slot, delta=None):
+            return await self.hass.services.async_call(
+                DOMAIN,
+                "terminal_input",
+                {
+                    "terminal": "dial",
+                    "input": input_name,
+                    "slot": slot,
+                    "revision": revision,
+                    **({"delta": delta} if delta is not None else {}),
+                },
+                blocking=True,
+                return_response=True,
+                context=Context(user_id="test_user"),
+            )
+
+        self.assertFalse((await command("activate", 3))["success"])
+        self.assertEqual(len(self.calls), 0)
+        self.assertTrue((await command("activate", 1))["success"])
+        self.assertEqual(self.calls[-1].service, "toggle")
+        await command("activate", 2)
+        await command("select", 2, 1)
+        self.assertEqual(len(self.calls), 1)  # Preview must not call the climate.
+        await command("activate", 2)
+        self.assertEqual(self.calls[-1].data["temperature"], 22)
+        await self.hass.async_block_till_done()
+        self.assertEqual(len(coordinator.history.records), 0)
+        await command("activate", 2)
+        await command("select", 2, -1)
+        count = len(self.calls)
+        await command("back", 2)
+        self.assertEqual(len(self.calls), count)
+        self.assertTrue(await self.hass.config_entries.async_unload(entry.entry_id))
+
     async def test_area_targets_and_nonmanual_calls(self):
         registry = entity_registry.async_get(self.hass)
         area = area_registry.async_get(self.hass).async_create("Contextual test area")

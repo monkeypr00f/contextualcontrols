@@ -228,11 +228,19 @@
       },
       "terminals": {
         "title": "Terminali fisici",
-        "description": "Aggiungi o aggiorna un terminale alla volta. Scegli una o più aree Home Assistant; l'ID tecnico deve corrispondere al `terminal_id` impostato nel firmware ESPHome. Configurati: {configured_terminals}",
+        "description": "Aggiungi o modifica un terminale. Per modificarne uno, scegli Modifica terminale senza compilare l’ID. I fissi sono ordinabili e precedono i suggerimenti; limite totale 20. Titolo vuoto: usa il nome delle aree. Configurati: {configured_terminals}",
         "data": {
           "terminal_id": "ID del terminale",
           "terminal_areas": "Aree",
-          "remove_terminal": "Rimuovi un terminale"
+          "remove_terminal": "Rimuovi un terminale",
+          "terminal_name": "Nome terminale",
+          "zone_name": "Nome zona (titolo display)",
+          "fixed_entities": "Entità fisse (ordinabili)",
+          "contextual_enabled": "Suggerimenti Contextual Controls",
+          "contextual_max_items": "Numero massimo suggerimenti",
+          "dim_timeout": "Attenuazione dopo (secondi)",
+          "off_timeout": "Spegnimento dopo (secondi)",
+          "edit_terminal": "Modifica un terminale esistente"
         },
         "data_description": {
           "terminal_id": "L'ID nel firmware ESPHome, ad esempio cc_cucina.",
@@ -368,7 +376,8 @@
       "invalid_terminal_mappings": "Usa coppie terminal_id:area_id separate da virgole; unisci più aree con +.",
       "terminal_id_required": "Inserisci l'ID del terminale.",
       "terminal_area_required": "Scegli almeno un'area per il terminale.",
-      "invalid_terminal_id": "L'ID del terminale può contenere solo lettere, numeri e trattini bassi."
+      "invalid_terminal_id": "L'ID del terminale può contenere solo lettere, numeri e trattini bassi.",
+      "invalid_terminal_settings": "Massimo 20 entità fisse; 0–12 suggerimenti; spegnimento successivo all’attenuazione."
     }
   },
   "entity": {
