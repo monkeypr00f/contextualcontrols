@@ -20,7 +20,8 @@ incorporata, installa la card prima di aggiornare l’integrazione a 0.5.0.
 ## Installazione manuale
 
 L'integrazione funziona senza hardware dedicato. Il firmware ESP32/LVGL e le
-istruzioni di cablaggio sono nel progetto indipendente `context-dial`, opzionale.
+istruzioni di cablaggio sono nel progetto indipendente
+[`context-dial`](https://github.com/monkeypr00f/context-dial), opzionale.
 Qui restano soltanto le [API per terminali fisici](docs/TERMINAL_API.md): chi
 usa esclusivamente Home Assistant e la dashboard non deve installare ESPHome.
 

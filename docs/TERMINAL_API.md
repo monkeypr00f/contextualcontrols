@@ -6,7 +6,8 @@ ESP32 dependency or hardware installation is included in this repository.
 Optional clients, including Context Dial, consume a five-slot projection of
 the existing ranking. Home Assistant owns filtering, limits, execution and
 learning; clients submit slot references instead of executable entity IDs.
-The separate `context-dial` repository owns firmware, wiring, UI and flashing.
+The separate [context-dial](https://github.com/monkeypr00f/context-dial)
+repository owns firmware, wiring, UI and flashing.
 
 ## Configure terminals
 
