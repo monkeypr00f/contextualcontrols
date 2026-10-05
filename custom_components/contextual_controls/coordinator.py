@@ -38,7 +38,7 @@ from .ai import (
 )
 from .const import DEFAULTS, DOMAIN
 from .context import is_home, presence_status, snapshot_context
-from .eligibility import available, compose, eligible
+from .eligibility import available, compose, eligible, terminal_order
 from .location import LocationEngine, TrackerObservation
 from .models import Candidate, ScoringSettings, Usage
 from .quick_access import (
@@ -95,6 +95,7 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.location = LocationEngine()
         self._location_timer = None
         self.terminal_manager = TerminalManager(hass, self)
+        self.terminal_rows: list[dict[str, Any]] = []
 
     async def async_initialize(self) -> None:
         await self.history.async_load(dt_util.utcnow())
@@ -539,6 +540,24 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     else "error"
                 )
             selected = compose(ranked, candidates, self.options)
+        # Physical terminals select their own area(s) before limiting to five.
+        # Retain the full policy-approved order instead of filtering the already
+        # truncated dashboard result; scoring itself is not duplicated.
+        terminal_selected = (
+            terminal_order(ranked, candidates, self.options)
+            if not (self.options["presence_mode"] == "require_home" and presence is not True)
+            else []
+        )
+        self.terminal_rows = [
+            {
+                "entity_id": item.entity_id,
+                "score": item.score,
+                "reason": item.reason_key,
+                "source": item.source,
+                "pinned": item.pinned,
+            }
+            for item in terminal_selected
+        ]
         rows = []
         for index, item in enumerate(selected, 1):
             key = (
@@ -958,21 +977,39 @@ class ContextualCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not isinstance(current, (int, float)):
                 current = 128 if state.state != "off" else 0
             value = max(0, min(255, round(float(current) + delta * 13)))
-            if value == 0:
-                action_domain, action_name, data = "light", "turn_off", {}
-            else:
-                action_domain, action_name, data = "light", "turn_on", {"brightness": value}
+            action_domain, action_name, data = (
+                ("light", "turn_on", {"brightness": value})
+                if value > 0
+                else ("light", "turn_off", {})
+            )
+        elif domain == "cover":
+            current = state.attributes.get("current_position")
+            if not isinstance(current, int):
+                return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
+            value = max(0, min(100, current + delta * 5))
+            action_domain, action_name, data = "cover", "set_cover_position", {"position": value}
         else:
             return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
         if not self.hass.services.has_service(action_domain, action_name):
             return {"entity_id": entity_id, "success": False, "reason": "unsupported_action"}
-        await self.hass.services.async_call(
-            action_domain,
-            action_name,
-            {"entity_id": entity_id, **data},
-            blocking=True,
-            context=context,
+        rejection = safety_rejection(
+            entity_id,
+            self.options["quick_access_safety_mode"],
+            self.options["quick_access_sensitive_entities"],
+            False,
         )
+        if rejection:
+            return {"entity_id": entity_id, "success": False, "reason": rejection}
+        try:
+            await self.hass.services.async_call(
+                action_domain,
+                action_name,
+                {"entity_id": entity_id, **data},
+                blocking=True,
+                context=context,
+            )
+        except HomeAssistantError:
+            return {"entity_id": entity_id, "success": False, "reason": "service_error"}
         return {"entity_id": entity_id, "action": action_name, "value": value, "success": True}
 
     async def _async_track_terminal_usage(

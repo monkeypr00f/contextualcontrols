@@ -3,7 +3,12 @@ from copy import deepcopy
 import pytest
 
 from custom_components.contextual_controls.const import DEFAULTS
-from custom_components.contextual_controls.eligibility import available, compose, eligible
+from custom_components.contextual_controls.eligibility import (
+    available,
+    compose,
+    eligible,
+    terminal_order,
+)
 from custom_components.contextual_controls.models import Candidate, Ranked
 from custom_components.contextual_controls.tracking import (
     Deduplicator,
@@ -81,6 +86,40 @@ def test_pins_truncated_and_unavailable_hidden(options):
     assert compose([], candidates, options)[0].entity_id == "light.b"
     assert available(Candidate("scene.evening", "unknown"))
     assert not available(Candidate("light.a", "unknown"))
+
+
+def test_terminal_scope_does_not_lose_actions_beyond_dashboard_limit(options):
+    options.update(suggestion_count=1)
+    candidates = {
+        "light.other": Candidate("light.other", "on", "bedroom"),
+        "light.living": Candidate("light.living", "on", "salotto"),
+        "light.dining": Candidate("light.dining", "on", "sala_da_pranzo"),
+        "light.kitchen": Candidate("light.kitchen", "off", "cucina"),
+        "light.excluded": Candidate("light.excluded", "on", "salotto"),
+    }
+    options["excluded_entities"] = ["light.excluded"]
+    ranked = [Ranked(entity, 0.9, "habit") for entity in candidates]
+    assert [item.entity_id for item in compose(ranked, candidates, options)] == ["light.other"]
+    areas = {"salotto", "sala_da_pranzo", "cucina"}
+    scoped = [
+        item.entity_id
+        for item in terminal_order(ranked, candidates, options)
+        if candidates[item.entity_id].area_id in areas
+    ]
+    assert scoped == ["light.living", "light.dining", "light.kitchen"]
+
+
+def test_terminal_without_history_has_manual_controls_but_respects_exclusions(options):
+    options["excluded_entities"] = ["light.excluded"]
+    candidates = {
+        "light.ready": Candidate("light.ready", "off", "salotto"),
+        "light.excluded": Candidate("light.excluded", "on", "salotto"),
+        "light.offline": Candidate("light.offline", "unavailable", "cucina"),
+    }
+    result = terminal_order([], candidates, options)
+    assert [item.entity_id for item in result] == ["light.ready"]
+    assert result[0].source == "available"
+    assert result[0].score == 0
 
 
 def test_classifier_never_assumes_parent_means_manual():

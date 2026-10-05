@@ -51,6 +51,8 @@ class TerminalSession:
     slots: SlotManager
     mode: str = "menu"
     active_slot: int | None = None
+    feedback: str = "ready"
+    adjusted_action: str | None = None
 
 
 class TerminalManager:
@@ -89,23 +91,26 @@ class TerminalManager:
         now = dt_util.now()
         rows = [
             row
-            for row in (self.coordinator.data or {}).get("entities", [])
+            for row in self.coordinator.terminal_rows
             if self.coordinator.areas.get(row["entity_id"]) in session.area_ids
         ]
-        session.slots.update(rows, now, self.coordinator._quick_target_valid)
-        areas = ar.async_get(self.hass)
-        area_names = [
+        # Do not replace the target under an editing user when ranking changes.
+        if session.mode != "adjust":
+            session.slots.update(rows, now, self.coordinator._quick_target_valid)
+        registry = ar.async_get(self.hass)
+        title = " · ".join(
             area.name
-            if (area := areas.async_get_area(area_id))
+            if (area := registry.async_get_area(area_id))
             else area_id.replace("_", " ").title()
             for area_id in session.area_ids
-        ]
-        title = " · ".join(area_names)
+        )
         prefix = f"sensor.contextual_controls_{terminal_id}"
         self.hass.states.async_set(f"{prefix}_title", title, {"terminal": terminal_id})
         self.hass.states.async_set(
             f"{prefix}_status",
-            "Controlli suggeriti" if any(session.slots.slots) else "Nessuna azione disponibile",
+            f"{sum(item is not None for item in session.slots.slots)} controlli disponibili"
+            if any(session.slots.slots)
+            else "Nessuna azione disponibile",
             {
                 "terminal": terminal_id,
                 "area_id": session.area_ids[0],
@@ -113,6 +118,11 @@ class TerminalManager:
             },
         )
         self.hass.states.async_set(f"{prefix}_mode", session.mode, {"terminal": terminal_id})
+        # This is deliberately a separate state rather than an attribute: ESPHome's
+        # Home Assistant text sensor consumes states, not arbitrary attributes.
+        self.hass.states.async_set(
+            f"{prefix}_feedback", session.feedback, {"terminal": terminal_id}
+        )
         self.hass.states.async_set(
             f"{prefix}_revision", str(session.slots.generation), {"terminal": terminal_id}
         )
@@ -131,12 +141,16 @@ class TerminalManager:
     ) -> dict[str, Any]:
         session = self._session(terminal_id)
         if revision is not None and revision != str(session.slots.generation):
+            session.feedback = "stale"
             await self.async_publish(terminal_id)
             return {"success": False, "reason": "stale_revision"}
         if input_name == "back":
+            if session.adjusted_action and session.active_slot is not None:
+                await self._track_adjustment(session, context)
+            session.feedback = "ready"
             if session.mode == "adjust":
                 session.mode, session.active_slot = "menu", None
-                await self.async_publish(terminal_id)
+            await self.async_publish(terminal_id)
             return {"success": True, "mode": session.mode}
         if slot is None or not 1 <= slot <= MAX_TERMINAL_ACTIONS:
             return {"success": False, "reason": "invalid_slot"}
@@ -147,45 +161,76 @@ class TerminalManager:
         )
         detail = self._slot_detail(session, selected)
         if not detail.get("available"):
+            session.feedback = "empty"
             await self.async_publish(terminal_id)
             return {"success": False, "reason": "empty_slot"}
         if input_name == "select" and session.mode == "adjust":
             result = await self.coordinator.async_adjust_terminal_slot(
                 detail["entity_id"], delta or 0, context
             )
+            if result.get("success"):
+                session.adjusted_action = result.get("action", "adjust")
             await self._emit(terminal_id, session, "adjust", selected, detail, result)
+            # A successful tick is still an editing operation, not a completed
+            # command. Keep the dial on its value-control view until press.
+            session.feedback = (
+                "adjust" if result.get("success") else str(result.get("reason", "error"))
+            )
             await self.async_publish(terminal_id)
             return result
         if input_name == "adjust" and detail["kind"] == "LIGHT":
             session.mode, session.active_slot = "adjust", selected
+            session.adjusted_action = None
+            session.feedback = "adjust"
             await self._emit(
                 terminal_id, session, "enter_adjust", selected, detail, {"success": True}
             )
             await self.async_publish(terminal_id)
             return {"success": True, "mode": session.mode}
-        if input_name == "activate" and detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}:
+        if input_name == "activate" and (
+            detail["kind"] in {"NUMBER", "CLIMATE", "MEDIA"}
+            or (detail["kind"] == "LIGHT" and session.mode == "adjust")
+        ):
             if session.mode == "adjust":
+                await self._track_adjustment(session, context)
                 session.mode, session.active_slot = "menu", None
                 await self._emit(
                     terminal_id, session, "confirm", selected, detail, {"success": True}
                 )
+                session.feedback = "ok"
             else:
                 session.mode, session.active_slot = "adjust", selected
+                session.adjusted_action = None
                 await self._emit(
                     terminal_id, session, "enter_adjust", selected, detail, {"success": True}
                 )
+                session.feedback = "adjust"
             await self.async_publish(terminal_id)
             return {"success": True, "mode": session.mode}
         if input_name != "activate":
             result = {"success": True, "reason": "selection_recorded"}
             await self._emit(terminal_id, session, "select", selected, detail, result)
             return result
+        # Ensure repeated successes produce distinct HA state transitions so
+        # the Dial never waits forever for a second identical "ok" response.
+        session.feedback = "loading"
+        await self.async_publish(terminal_id)
         result = await self.coordinator.async_execute_terminal_entity(
             detail["entity_id"], selected, context
         )
         await self._emit(terminal_id, session, "activate", selected, detail, result)
+        session.feedback = "ok" if result.get("success") else str(result.get("reason", "error"))
         await self.async_publish(terminal_id)
         return result
+
+    async def _track_adjustment(self, session: TerminalSession, context: Context) -> None:
+        if session.adjusted_action and session.active_slot is not None:
+            snapshot = session.slots.get(session.active_slot)
+            if snapshot is not None:
+                await self.coordinator._async_track_terminal_usage(
+                    snapshot.entity_id, session.adjusted_action, session.active_slot, context
+                )
+            session.adjusted_action = None
 
     async def _emit(
         self,
@@ -205,6 +250,9 @@ class TerminalManager:
                 "area_ids": list(session.area_ids),
                 "input": input_name,
                 "slot": selected,
+                "position": selected,
+                "mode": session.mode,
+                "revision": session.slots.generation,
                 "action_id": detail["entity_id"],
                 "available_action_ids": [
                     item.entity_id for item in session.slots.slots if item is not None
@@ -226,12 +274,19 @@ class TerminalManager:
             domain,
             "TOGGLE" if domain in {"light", "switch", "fan", "input_boolean"} else "ACTION",
         )
+        # A dimmer/position is a value control; a simple light remains a
+        # toggle. This keeps the projected type truthful to actual capability.
         if domain == "light" and self._light_supports_brightness(state.attributes):
             kind = "LIGHT"
+        elif domain == "cover" and isinstance(state.attributes.get("current_position"), int):
+            kind = "NUMBER"
         label = str(state.attributes.get("friendly_name", entity_id))
         if kind in {"NUMBER", "CLIMATE", "MEDIA", "LIGHT"}:
-            value = self._value_label(domain, state.state, state.attributes)
-            label = f"{label}: {value}" if value else label
+            value_label = self._value_label(domain, state.state, state.attributes)
+            label = f"{label}: {value_label}" if value_label else label
+        value, minimum, maximum, step, unit = self._control_values(
+            domain, state.state, state.attributes
+        )
         return {
             "slot": slot,
             "available": True,
@@ -242,22 +297,69 @@ class TerminalManager:
             "state": state.state,
             "score": snapshot.score,
             "rank_reason": snapshot.reason,
+            # A complete projection lets non-ESPHome clients render native
+            # controls too. The Dial itself needs only label/kind; HA remains
+            # authoritative for all limits and the actual adjustment.
+            "value": value,
+            "min": minimum,
+            "max": maximum,
+            "step": step,
+            "unit": unit,
         }
 
     @staticmethod
     def _value_label(domain: str, state: str, attributes: dict[str, Any]) -> str:
-        if domain == "light":
-            brightness = attributes.get("brightness")
-            if isinstance(brightness, (float, int)):
-                return f"{round(float(brightness) / 255 * 100)}%"
-            return "spenta" if state == "off" else state
         if domain == "media_player":
             volume = attributes.get("volume_level")
             return f"{round(float(volume) * 100)}%" if isinstance(volume, (float, int)) else state
         if domain == "climate":
             value = attributes.get("temperature")
             return f"{value}°" if value is not None else state
+        if domain == "light":
+            return f"{round((attributes.get('brightness') or 0) * 100 / 255)}%"
+        if domain == "cover" and isinstance(attributes.get("current_position"), int):
+            return f"{attributes['current_position']}%"
         return state
+
+    @staticmethod
+    def _control_values(
+        domain: str, state: str, attributes: dict[str, Any]
+    ) -> tuple[float | str | None, float | None, float | None, float | None, str]:
+        """Normalize value metadata without making device-specific assumptions."""
+        if domain == "number":
+            minimum = attributes.get("min")
+            maximum = attributes.get("max")
+            if minimum is None or maximum is None:
+                return None, None, None, None, ""
+            try:
+                return (
+                    float(state),
+                    float(minimum),
+                    float(maximum),
+                    float(attributes.get("step", 1)),
+                    str(attributes.get("unit_of_measurement", "")),
+                )
+            except TypeError, ValueError:
+                return None, None, None, None, ""
+        if domain == "climate":
+            value = attributes.get("temperature")
+            if isinstance(value, (int, float)):
+                return (
+                    value,
+                    float(attributes.get("min_temp", value)),
+                    float(attributes.get("max_temp", value)),
+                    float(attributes.get("target_temp_step", 0.5)),
+                    str(attributes.get("temperature_unit", "°C")),
+                )
+        if domain == "media_player":
+            value = attributes.get("volume_level")
+            if isinstance(value, (int, float)):
+                return round(value * 100), 0, 100, 5, "%"
+        if domain == "light":
+            return round((attributes.get("brightness") or 0) * 100 / 255), 0, 100, 5, "%"
+        if domain == "cover" and isinstance(attributes.get("current_position"), int):
+            return attributes["current_position"], 0, 100, 5, "%"
+        return state, None, None, None, ""
 
     @staticmethod
     def _light_supports_brightness(attributes: dict[str, Any]) -> bool:

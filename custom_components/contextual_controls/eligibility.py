@@ -53,3 +53,21 @@ def compose(
     if options["pinned_position"] == "after":
         return dynamic[:slots] + fixed
     return fixed + dynamic[:slots]
+
+
+def terminal_order(
+    ranked: list[Ranked], candidates: Mapping[str, Candidate], options: Mapping[str, Any]
+) -> list[Ranked]:
+    """Recommendations first, then available manual controls, before area capping.
+
+    A physical controller must remain usable before habits have been learned.
+    Zero-score fallback controls are explicitly not marked as predictions and
+    still pass the same exclusion/availability/pinned policy as the dashboard.
+    """
+    seen = {item.entity_id for item in ranked}
+    fallback = [
+        Ranked(entity, 0.0, "available", source="available")
+        for entity in sorted(candidates)
+        if entity not in seen
+    ]
+    return compose(ranked + fallback, candidates, {**options, "suggestion_count": len(candidates)})

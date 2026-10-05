@@ -5,7 +5,7 @@ Controlli Home Assistant suggeriti in base alle abitudini reali e all’orario.
 
 ## Stato del progetto
 
-Versione 0.10.5. Richiede **Home Assistant Core 2026.9.3 o successivo**.
+Versione 0.10.6. Richiede **Home Assistant Core 2026.9.3 o successivo**.
 Apprendimento, filtri e ranking di base sono sempre locali. L’AI è opzionale e
 può soltanto riordinare una shortlist già ammessa dal motore statistico.
 Presenza, giorno della settimana, area e contesto casa contribuiscono al ranking
@@ -18,6 +18,12 @@ così può essere aggiornata senza riavviare Home Assistant. Se usavi l’antepr
 incorporata, installa la card prima di aggiornare l’integrazione a 0.5.0.
 
 ## Installazione manuale
+
+L'integrazione funziona senza hardware dedicato. Il firmware ESP32/LVGL e le
+istruzioni di cablaggio sono nel progetto indipendente
+[`context-dial`](https://github.com/monkeypr00f/context-dial), opzionale.
+Qui restano soltanto le [API per terminali fisici](docs/TERMINAL_API.md): chi
+usa esclusivamente Home Assistant e la dashboard non deve installare ESPHome.
 
 1. Copia la cartella `custom_components/contextual_controls` in
    `/config/custom_components/contextual_controls` del tuo Home Assistant.
